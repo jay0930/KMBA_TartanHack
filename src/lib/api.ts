@@ -1,14 +1,20 @@
 /**
- * Fetch wrapper that routes all backend API calls through the Next.js proxy.
- * The proxy reads the cookie, adds X-User-Id, and forwards to FastAPI.
- *
- * Usage: backendFetch('/api/user') → fetch('/api/proxy/api/user')
+ * Fetch wrapper that routes backend API calls through dedicated Next.js routes.
+ * Maps known paths to their dedicated routes, falls back to proxy for unknown paths.
  */
+const ROUTE_MAP: Record<string, string> = {
+  '/api/emoji/assign': '/api/emoji',
+  '/api/auth/google/status': '/api/auth/google-status',
+};
 export async function backendFetch(
   path: string,
   init?: RequestInit,
 ): Promise<Response> {
-  return fetch(`/api/proxy${path}`, init);
+  // Strip query string for matching, then reattach
+  const [basePath, query] = path.split('?');
+  const mapped = ROUTE_MAP[basePath] || basePath;
+  const url = query ? `${mapped}?${query}` : mapped;
+  return fetch(url, init);
 }
 
 /**
