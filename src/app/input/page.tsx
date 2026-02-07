@@ -892,21 +892,23 @@ function DiaryResult({ events, onDone }: { events: TimelineEvent[]; onDone: () =
 
   if (loading) {
     return (
-      <div style={{ padding: '60px 20px', textAlign: 'center' }}>
-        <div style={{ fontSize: 48, marginBottom: 16, animation: 'float 2s ease-in-out infinite' }}>📝</div>
+      <div style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        minHeight: 300, textAlign: 'center', padding: '60px 20px',
+      }}>
+        <video
+          src="/images/Scotty_Loading.mp4"
+          autoPlay
+          loop
+          muted
+          playsInline
+          style={{ width: 140, height: 140, objectFit: 'contain', marginBottom: 16, borderRadius: 16 }}
+        />
         <div className="font-[family-name:var(--font-outfit)]" style={{ fontSize: 18, fontWeight: 600, color: '#333', marginBottom: 8 }}>
           Writing your diary...
         </div>
-        <div style={{ fontSize: 13, color: '#999', marginBottom: 24 }}>
+        <div style={{ fontSize: 13, color: '#999' }}>
           AI is reflecting on your day
-        </div>
-        <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
-          {[0, 1, 2].map(i => (
-            <div key={i} style={{
-              width: 8, height: 8, borderRadius: 4, background: '#0046FF',
-              animation: `bounce 1.4s ease-in-out ${i * 0.2}s infinite`,
-            }} />
-          ))}
         </div>
       </div>
     );
