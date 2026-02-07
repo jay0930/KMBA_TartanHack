@@ -35,6 +35,8 @@ from db import (
     get_photos as db_get_photos,
     upload_photo_to_storage,
     delete_diary as db_delete_diary,
+    get_user as db_get_user,
+    create_or_update_user as db_create_or_update_user,
 )
 
 app = FastAPI()
@@ -94,11 +96,11 @@ def _get_google_flow() -> Flow:
                 "client_secret": client_secret,
                 "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                 "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": [f"{BACKEND_URL}/api/auth/google/callback"],
+                "redirect_uris": [f"http://localhost:8000/api/auth/google/callback"],
             }
         },
         scopes=GOOGLE_SCOPES,
-        redirect_uri=f"{BACKEND_URL}/api/auth/google/callback",
+        redirect_uri="http://localhost:8000/api/auth/google/callback",
     )
 
 
@@ -173,6 +175,14 @@ class SaveCalendarRequest(BaseModel):
     date: str
     events: list[CalendarEvent]
     diary_id: str | None = None
+
+
+class UserProfile(BaseModel):
+    name: str | None = None
+    gender: str | None = None
+    age: int | None = None
+    calendar_url: str | None = None
+    photo_url: str | None = None
 
 
 # ── Endpoints ───────────────────────────────────────────────────────
@@ -692,3 +702,30 @@ async def analyze_photos(files: list[UploadFile] = File(...)):
             events.append(a)
 
     return {"events": events}
+
+
+# ── User Profile ─────────────────────────────────────────────────────
+
+@app.get("/api/user")
+async def get_user_profile(user_id: str = Query(default="default")):
+    """Get user profile by user_id. Returns default profile if not found."""
+    user = await db_get_user(user_id)
+    if not user:
+        # Return empty profile if user doesn't exist yet
+        return {
+            "id": user_id,
+            "name": None,
+            "gender": None,
+            "age": None,
+            "calendar_url": None,
+            "photo_url": None,
+        }
+    return user
+
+
+@app.post("/api/user")
+async def update_user_profile(profile: UserProfile, user_id: str = Query(default="default")):
+    """Create or update user profile."""
+    user_data = profile.model_dump(exclude_none=False)
+    result = await db_create_or_update_user(user_id, user_data)
+    return result

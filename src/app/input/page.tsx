@@ -110,12 +110,20 @@ function CalendarStep({ onNext }: { onNext: (events: CalendarEvent[]) => void })
       const status = await statusRes.json();
       if (status.connected) {
         // Already connected — fetch events with calendar ID
+        // Save calendar URL to profile
+        if (calendarUrl) {
+          localStorage.setItem('dayflow_calendar_url', calendarUrl);
+        }
         await fetchCalendarEvents(calId || undefined);
         return;
       }
       // Not connected — redirect to Google OAuth
       // Save calendar ID to localStorage so we can use it after redirect
       if (calId) localStorage.setItem('dayflow_calendar_id', calId);
+      // Save calendar URL to profile
+      if (calendarUrl) {
+        localStorage.setItem('dayflow_calendar_url', calendarUrl);
+      }
       window.location.href = `${BACKEND_URL}/api/auth/google`;
     } catch (err: any) {
       console.error('Calendar connect failed:', err);
@@ -433,7 +441,8 @@ function PhotoStep({ onNext }: { onNext: (photos: PhotoEvent[]) => void }) {
     try {
       const formData = new FormData();
       items.forEach(item => formData.append('files', item.file));
-      const res = await fetch(`${BACKEND_URL}/api/photos/analyze`, {
+      const today = new Date().toISOString().split('T')[0];
+      const res = await fetch(`${BACKEND_URL}/api/photos/upload?date=${today}`, {
         method: 'POST',
         body: formData,
       });
@@ -979,15 +988,20 @@ function DiaryResult({ events, onDone }: { events: TimelineEvent[]; onDone: () =
           })),
         },
       };
-      await fetch(`${BACKEND_URL}/api/diary/save`, {
+      const res = await fetch(`${BACKEND_URL}/api/diary/save`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
       onDone();
     } catch (err) {
       console.error('Failed to save diary:', err);
-      onDone();
+      alert('Failed to save diary. Please try again.');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -1022,22 +1036,6 @@ function DiaryResult({ events, onDone }: { events: TimelineEvent[]; onDone: () =
       </div>
       <div style={{ fontSize: 14, color: '#888', marginBottom: 20 }}>
         Friday, February 6, 2026
-      </div>
-
-      {/* Emoji mosaic */}
-      <div style={{
-        display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap',
-        justifyContent: 'center',
-      }}>
-        {diary!.emojis.map((e, i) => (
-          <div key={i} style={{
-            width: 36, height: 36, borderRadius: 10,
-            background: `hsl(${i * 45}, 80%, 95%)`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 18,
-            animation: `fade-in-up 0.3s ease-out ${i * 0.05}s both`,
-          }}>{e}</div>
-        ))}
       </div>
 
       {/* Diary text — tap to edit */}
@@ -1086,34 +1084,20 @@ function DiaryResult({ events, onDone }: { events: TimelineEvent[]; onDone: () =
               marginTop: 10, fontSize: 11, color: '#bbb',
               display: 'flex', alignItems: 'center', gap: 4,
             }}>
-              <span>✏️</span> Tap to edit
+              Tap to edit
             </div>
           </div>
         )}
       </div>
 
       {/* Spending insight */}
-      <div style={{
-        padding: '14px 18px', background: '#FFF3E0', borderRadius: 14,
-        border: '1px solid #FFE0B2', marginBottom: 12,
-        display: 'flex', alignItems: 'center', gap: 10,
-      }}>
-        <span style={{ fontSize: 20 }}>💰</span>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#FF9013' }}>{diary!.insight}</div>
-        </div>
+      <div className="p-3 px-4 rounded-xl text-[13px] mb-3" style={{ background: 'rgba(0,70,255,0.06)', color: '#0046FF' }}>
+        📊 {diary!.insight}
       </div>
 
       {/* Tomorrow's tip */}
-      <div style={{
-        padding: '14px 18px', background: '#F5F1DC', borderRadius: 14,
-        border: '1px solid #73C8D2', marginBottom: 24,
-        display: 'flex', alignItems: 'center', gap: 10,
-      }}>
-        <span style={{ fontSize: 20 }}>💡</span>
-        <div>
-          <div style={{ fontSize: 13, color: '#0046FF' }}>{diary!.tip}</div>
-        </div>
+      <div className="p-3 px-4 rounded-xl text-[13px] mb-6" style={{ background: 'rgba(115,200,210,0.12)', color: '#0e7490' }}>
+        🌱 {diary!.tip}
       </div>
 
       {/* Thumb selection */}
@@ -1230,7 +1214,7 @@ export default function DayFlowInput() {
           <DiaryResult
             events={finalTimeline}
             onDone={() => {
-              router.push('/');
+              router.push('/?refresh=' + Date.now());
             }}
           />
         )}

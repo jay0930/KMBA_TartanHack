@@ -68,13 +68,16 @@ async def save_diary(date: str, diary_data: dict) -> dict:
     """Save or update a diary entry for a given date.
 
     If diary_data contains an 'id', it upserts by primary key.
-    Otherwise it inserts a new row.
+    Otherwise, finds existing diary for the date and updates it, or creates new one.
     """
     row = {"date": date, **diary_data}
     if "id" in row:
         result = supabase.table("diaries").upsert(row).execute()
     else:
-        result = supabase.table("diaries").insert(row).execute()
+        # Check if diary already exists for this date
+        existing = await get_or_create_diary(date)
+        row["id"] = existing["id"]
+        result = supabase.table("diaries").upsert(row).execute()
     return result.data[0]
 
 
@@ -107,20 +110,28 @@ async def get_diary_by_id(diary_id: str) -> dict | None:
 
 
 async def get_diary_history(limit: int = 30) -> list:
-    """Fetch the most recent diary entries with their timeline events (excluding soft-deleted)."""
+    """Fetch the most recent diary entries with their timeline events and photos (excluding soft-deleted)."""
     result = (
         supabase.table("diaries")
-        .select("*, timeline_events(id, time, emoji, title, spending, source, is_deleted)")
-        .order("created_at", desc=True)
+        .select("*, timeline_events(id, time, emoji, title, spending, source, is_deleted), photos(url, extracted_time)")
+        .order("date", desc=True)
         .limit(limit)
         .execute()
     )
-    # Filter out soft-deleted timeline events
+    # Filter out soft-deleted timeline events and set primary photo
     for diary in result.data:
         if diary.get("timeline_events"):
             diary["timeline_events"] = [
                 e for e in diary["timeline_events"] if not e.get("is_deleted")
             ]
+        # Set photo_url to first photo's URL if available
+        photos = diary.get("photos", [])
+        if photos and len(photos) > 0:
+            # Sort photos by extracted_time if available, then pick first
+            sorted_photos = sorted(photos, key=lambda p: p.get("extracted_time") or "00:00")
+            diary["photo_url"] = sorted_photos[0].get("url")
+        else:
+            diary["photo_url"] = None
     return result.data
 
 
@@ -370,3 +381,41 @@ async def save_thumb(diary_id: str, event_id: str) -> dict:
         .execute()
     )
     return result.data[0]
+
+
+# ── Users ────────────────────────────────────────────────────────────
+
+async def get_user(user_key: str = "default") -> dict | None:
+    """Fetch user profile by user_key. Returns None if not found."""
+    result = (
+        supabase.table("users")
+        .select("*")
+        .eq("user_key", user_key)
+        .limit(1)
+        .execute()
+    )
+    if result.data and len(result.data) > 0:
+        return result.data[0]
+    return None
+
+
+async def create_or_update_user(user_key: str, user_data: dict) -> dict:
+    """Create or update a user profile. Upserts by user_key."""
+    # First, try to get existing user
+    existing = await get_user(user_key)
+
+    if existing:
+        # Update existing user
+        row = {**user_data}
+        result = (
+            supabase.table("users")
+            .update(row)
+            .eq("user_key", user_key)
+            .execute()
+        )
+        return result.data[0]
+    else:
+        # Create new user
+        row = {"user_key": user_key, **user_data}
+        result = supabase.table("users").insert(row).execute()
+        return result.data[0]

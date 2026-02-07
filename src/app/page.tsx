@@ -292,6 +292,13 @@ export default function DayFlowFeed() {
           <div className="text-2xl font-bold text-[#1a1a1a] font-[family-name:var(--font-outfit)]">
             DayFlow
           </div>
+          <button
+            onClick={() => router.push('/profile')}
+            className="w-9 h-9 rounded-full bg-white flex items-center justify-center text-gray-700 text-lg hover:bg-gray-100 transition-colors shadow-sm border border-gray-200"
+            title="Profile"
+          >
+            👤
+          </button>
         </div>
 
         {/* Feed */}
