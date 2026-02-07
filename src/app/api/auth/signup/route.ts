@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     .single();
 
   if (existing) {
-    return NextResponse.json({ error: '이미 가입된 이메일입니다' }, { status: 409 });
+    return NextResponse.json({ error: 'This email is already registered' }, { status: 409 });
   }
 
   const password_hash = hashPassword(password);
