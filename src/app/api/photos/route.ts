@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001';
+import { BACKEND_URL } from '@/lib/backend-url';
 
 export async function POST(request: Request) {
   const user = await getCurrentUser();

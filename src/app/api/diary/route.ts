@@ -3,7 +3,7 @@ import { callDedalus, extractText } from '@/lib/dedalus';
 import { getCurrentUser } from '@/lib/auth';
 import type { TimelineEvent } from '@/lib/types';
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001';
+import { BACKEND_URL } from '@/lib/backend-url';
 
 export async function POST(request: Request) {
   const user = await getCurrentUser();
