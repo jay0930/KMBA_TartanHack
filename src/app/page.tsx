@@ -3,9 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import EmojiTimeline from '@/components/EmojiTimeline';
-import { supabase } from '@/lib/supabase';
-
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001';
+import { backendFetch, fetchCurrentUser } from '@/lib/api';
 
 const GRADIENTS = [
   'linear-gradient(135deg, #0046FF 0%, #73C8D2 100%)',
@@ -227,17 +225,15 @@ export default function DayFlowFeed() {
   const [authReady, setAuthReady] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
+    fetchCurrentUser().then((user) => {
+      if (!user) {
         router.replace('/login');
         return;
       }
-      const email = session.user.email || '';
-      setUserName(email.split('@')[0]);
+      setUserName(user.name || user.email?.split('@')[0] || '');
       setAuthReady(true);
 
-      const userId = session.user.id;
-      fetch(`${BACKEND_URL}/api/diary/history?limit=30&user_id=${userId}`)
+      fetch('/api/diary')
         .then(res => res.json())
         .then((data: Array<{
           id: string;
@@ -289,6 +285,12 @@ export default function DayFlowFeed() {
         .catch(() => {});
     });
   }, [router]);
+
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    router.replace('/login');
+  };
+
 
   if (!authReady) {
     return (
@@ -504,7 +506,7 @@ export default function DayFlowFeed() {
                   if (deleting) return;
                   setDeleting(true);
                   try {
-                    await fetch(`${BACKEND_URL}/api/diary/${selectedDiary.id}`, { method: 'DELETE' });
+                    await backendFetch(`/api/diary/${selectedDiary.id}`, { method: 'DELETE' });  // direct backend call with X-User-Id
                     setDiaries(prev => prev.filter(d => d.id !== selectedDiary.id));
                     setWeeklyTotal(prev => prev - selectedDiary.total);
                     setConfirmDelete(false);

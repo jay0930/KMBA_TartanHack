@@ -13,6 +13,22 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 PHOTO_BUCKET = "photos"
 
 
+def _extract_hhmm(time_str: str) -> str:
+    """Extract HH:MM from various time formats.
+
+    Handles ISO 8601 ("2025-02-07T10:00:00"), plain time ("10:00"), etc.
+    """
+    if not time_str:
+        return "12:00"
+    if "T" in time_str:
+        # ISO format: extract after the T
+        time_part = time_str.split("T", 1)[1]
+        return time_part[:5] if len(time_part) >= 5 else "12:00"
+    if len(time_str) >= 5 and time_str[2] == ":":
+        return time_str[:5]
+    return "12:00"
+
+
 # ── Test ────────────────────────────────────────────────────────────
 
 async def test_connection() -> dict:
@@ -46,40 +62,42 @@ async def save_diary(date: str, diary_data: dict) -> dict:
     Otherwise, finds existing diary for the date (and user_id) and updates it, or creates new one.
     """
     row = {"date": date, **diary_data}
+    user_id = row.get("user_id")
     if "id" in row:
-        result = supabase.table("diaries").upsert(row).execute()
+        result = supabase.table("diaries").upsert(row, on_conflict="id").execute()
     else:
-        # Check if diary already exists for this date + user_id
-        user_id = diary_data.get("user_id")
+        # Check if diary already exists for this date + user
         existing = await get_or_create_diary(date, user_id=user_id)
         row["id"] = existing["id"]
-        result = supabase.table("diaries").upsert(row).execute()
+        result = supabase.table("diaries").upsert(row, on_conflict="id").execute()
     return result.data[0]
 
 
-async def get_diary(date: str) -> dict | None:
-    """Fetch a single diary entry by date."""
-    result = (
+async def get_diary(date: str, user_id: str | None = None) -> dict | None:
+    """Fetch a single diary entry by date, optionally filtered by user_id."""
+    query = (
         supabase.table("diaries")
         .select("*, timeline_events(*)")
         .eq("date", date)
-        .limit(1)
-        .execute()
     )
+    if user_id:
+        query = query.eq("user_id", user_id)
+    result = query.limit(1).execute()
     if result.data and len(result.data) > 0:
         return result.data[0]
     return None
 
 
-async def get_diary_by_id(diary_id: str) -> dict | None:
+async def get_diary_by_id(diary_id: str, user_id: str | None = None) -> dict | None:
     """Fetch a single diary entry by ID, with timeline events and photos."""
-    result = (
+    query = (
         supabase.table("diaries")
         .select("*, timeline_events(*), photos(*)")
         .eq("id", diary_id)
-        .limit(1)
-        .execute()
     )
+    if user_id:
+        query = query.eq("user_id", user_id)
+    result = query.limit(1).execute()
     if result.data and len(result.data) > 0:
         return result.data[0]
     return None
@@ -111,9 +129,12 @@ async def get_diary_history(limit: int = 30, user_id: str | None = None) -> list
     return result.data
 
 
-async def delete_diary(diary_id: str) -> bool:
+async def delete_diary(diary_id: str, user_id: str | None = None) -> bool:
     """Delete a diary entry by ID. Cascade deletes timeline_events, photos, etc."""
-    supabase.table("diaries").delete().eq("id", diary_id).execute()
+    query = supabase.table("diaries").delete().eq("id", diary_id)
+    if user_id:
+        query = query.eq("user_id", user_id)
+    query.execute()
     return True
 
 
@@ -195,12 +216,15 @@ async def save_calendar_events(date: str, events: list[dict], diary_id: str | No
     Deletes existing events for the date first, then inserts fresh.
     This avoids partial-index issues with on_conflict.
     """
-    # clear old events for this date, then bulk-insert
-    supabase.table("calendar_events").delete().eq("date", date).execute()
+    # clear old events for this date+diary, then bulk-insert
+    query = supabase.table("calendar_events").delete().eq("date", date)
+    if diary_id:
+        query = query.eq("diary_id", diary_id)
+    query.execute()
     # Also delete by calendar_id to avoid unique constraint violations from multi-day events
     cal_ids = [ev.get("calendar_id") for ev in events if ev.get("calendar_id")]
-    for cid in cal_ids:
-        supabase.table("calendar_events").delete().eq("calendar_id", cid).execute()
+    if cal_ids:
+        supabase.table("calendar_events").delete().in_("calendar_id", cal_ids).execute()
 
     rows = []
     for ev in events:
@@ -220,21 +244,25 @@ async def save_calendar_events(date: str, events: list[dict], diary_id: str | No
     return result.data
 
 
-async def get_calendar_events(date: str) -> list:
-    """Fetch all calendar events for a given date, ordered by start_time."""
-    result = (
+async def get_calendar_events(date: str, diary_id: str | None = None) -> list:
+    """Fetch calendar events for a given date, filtered by diary_id if provided."""
+    query = (
         supabase.table("calendar_events")
         .select("*")
         .eq("date", date)
-        .order("start_time")
-        .execute()
     )
+    if diary_id:
+        query = query.eq("diary_id", diary_id)
+    result = query.order("start_time").execute()
     return result.data
 
 
-async def delete_calendar_events(date: str) -> None:
-    """Delete all calendar events for a date (useful before re-import)."""
-    supabase.table("calendar_events").delete().eq("date", date).execute()
+async def delete_calendar_events(date: str, diary_id: str | None = None) -> None:
+    """Delete calendar events for a date, filtered by diary_id if provided."""
+    query = supabase.table("calendar_events").delete().eq("date", date)
+    if diary_id:
+        query = query.eq("diary_id", diary_id)
+    query.execute()
 
 
 # ── Photos ───────────────────────────────────────────────────────────
@@ -302,7 +330,7 @@ async def save_calendar_as_timeline(diary_id: str, events: list[dict]) -> dict:
     for i, e in enumerate(new_events):
         rows.append({
             "diary_id": diary_id,
-            "time": e.get("start_time", e.get("time", "12:00"))[:5],  # HH:MM
+            "time": _extract_hhmm(e.get("start_time", e.get("time", "12:00"))),
             "emoji": e.get("emoji", "📅"),
             "title": e.get("title", ""),
             "description": e.get("description", ""),
@@ -361,14 +389,16 @@ async def upload_photo_to_storage(file_bytes: bytes, filename: str, content_type
 
 # ── Thumb ────────────────────────────────────────────────────────────
 
-async def save_thumb(diary_id: str, event_id: str) -> dict:
+async def save_thumb(diary_id: str, event_id: str, user_id: str | None = None) -> dict:
     """Save a thumb (bookmark / highlight) for a specific event in a diary."""
-    result = (
+    query = (
         supabase.table("diaries")
         .update({"thumb_event_id": event_id})
         .eq("id", diary_id)
-        .execute()
     )
+    if user_id:
+        query = query.eq("user_id", user_id)
+    result = query.execute()
     return result.data[0]
 
 
@@ -390,6 +420,11 @@ async def get_user(user_id: str) -> dict | None:
 
 async def create_or_update_user(user_id: str, user_data: dict) -> dict:
     """Create or update a user profile. Upserts by auth user_id."""
+    # Never overwrite sensitive fields via profile update
+    user_data.pop("password_hash", None)
+    user_data.pop("google_token", None)
+    user_data.pop("user_id", None)
+
     existing = await get_user(user_id)
 
     if existing:
@@ -405,3 +440,39 @@ async def create_or_update_user(user_id: str, user_data: dict) -> dict:
         row = {"user_id": user_id, **user_data}
         result = supabase.table("users").insert(row).execute()
         return result.data[0]
+
+
+# ── Google OAuth Token (DB storage) ──────────────────────────────
+
+async def save_google_token(user_id: str, token_data: dict) -> dict:
+    """Save Google OAuth token JSON to the users table."""
+    existing = await get_user(user_id)
+    if existing:
+        result = (
+            supabase.table("users")
+            .update({"google_token": token_data})
+            .eq("user_id", user_id)
+            .execute()
+        )
+        return result.data[0]
+    else:
+        result = (
+            supabase.table("users")
+            .insert({"user_id": user_id, "google_token": token_data})
+            .execute()
+        )
+        return result.data[0]
+
+
+async def get_google_token(user_id: str) -> dict | None:
+    """Load Google OAuth token JSON from the users table."""
+    result = (
+        supabase.table("users")
+        .select("google_token")
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+    if result.data and result.data[0].get("google_token"):
+        return result.data[0]["google_token"]
+    return None
