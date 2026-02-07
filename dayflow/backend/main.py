@@ -12,10 +12,14 @@ from db import (
     save_timeline_events,
     update_spending,
     save_thumb as db_save_thumb,
+    get_diary_by_id as db_get_diary_by_id,
     get_diary_history as db_get_diary_history,
     save_calendar_events as db_save_calendar_events,
     get_calendar_events as db_get_calendar_events,
     delete_calendar_events as db_delete_calendar_events,
+    save_photo as db_save_photo,
+    save_photos as db_save_photos,
+    get_photos as db_get_photos,
 )
 
 app = FastAPI()
@@ -51,6 +55,9 @@ class DiaryOutput(BaseModel):
     tomorrow_suggestion: str | None = None
     total_spending: int = 0
     thumb_event_id: str | None = None
+    diary_preview: str | None = None
+    primary_emoji: str | None = None
+    photo_url: str | None = None
     timeline: list[TimelineEvent] = []
 
 
@@ -67,6 +74,19 @@ class UpdateSpendingRequest(BaseModel):
 class ThumbRequest(BaseModel):
     diary_id: str
     event_id: str
+
+
+class PhotoRecord(BaseModel):
+    url: str
+    thumbnail_url: str | None = None
+    ai_analysis: str | None = None
+    extracted_time: str | None = None
+    extracted_location: str | None = None
+
+
+class SavePhotosRequest(BaseModel):
+    diary_id: str
+    photos: list[PhotoRecord]
 
 
 class CalendarEvent(BaseModel):
@@ -127,8 +147,34 @@ async def thumb(body: ThumbRequest):
 
 @app.get("/api/diary/history")
 async def diary_history(limit: int = Query(default=30, ge=1, le=100)):
-    """Return past diaries ordered by date desc."""
+    """Return past diaries ordered by date desc, with timeline events."""
     return await db_get_diary_history(limit)
+
+
+@app.get("/api/diary/{diary_id}")
+async def get_diary_detail(diary_id: str):
+    """Get a single diary with full timeline events and photos."""
+    diary = await db_get_diary_by_id(diary_id)
+    if not diary:
+        return {"error": "Diary not found"}
+    return diary
+
+
+# ── Photos ───────────────────────────────────────────────────────────
+
+@app.post("/api/photos/save")
+async def save_photos_endpoint(body: SavePhotosRequest):
+    """Save photo records linked to a diary entry."""
+    photo_dicts = [p.model_dump() for p in body.photos]
+    rows = await db_save_photos(body.diary_id, photo_dicts)
+    return {"saved": len(rows), "photos": rows}
+
+
+@app.get("/api/photos/{diary_id}")
+async def get_photos_endpoint(diary_id: str):
+    """Get all photos for a diary entry."""
+    photos = await db_get_photos(diary_id)
+    return {"photos": photos}
 
 
 # ── Calendar Events ──────────────────────────────────────────────────

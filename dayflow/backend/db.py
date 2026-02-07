@@ -67,11 +67,23 @@ async def get_diary(date: str) -> dict | None:
     return result.data
 
 
-async def get_diary_history(limit: int = 30) -> list:
-    """Fetch the most recent diary entries."""
+async def get_diary_by_id(diary_id: str) -> dict | None:
+    """Fetch a single diary entry by ID, with timeline events and photos."""
     result = (
         supabase.table("diaries")
-        .select("*")
+        .select("*, timeline_events(*), photos(*)")
+        .eq("id", diary_id)
+        .maybe_single()
+        .execute()
+    )
+    return result.data
+
+
+async def get_diary_history(limit: int = 30) -> list:
+    """Fetch the most recent diary entries with their timeline events."""
+    result = (
+        supabase.table("diaries")
+        .select("*, timeline_events(id, time, emoji, title, spending, source)")
         .order("date", desc=True)
         .limit(limit)
         .execute()
@@ -136,6 +148,34 @@ async def get_calendar_events(date: str) -> list:
 async def delete_calendar_events(date: str) -> None:
     """Delete all calendar events for a date (useful before re-import)."""
     supabase.table("calendar_events").delete().eq("date", date).execute()
+
+
+# ── Photos ───────────────────────────────────────────────────────────
+
+async def save_photo(diary_id: str, photo_data: dict) -> dict:
+    """Save a photo record linked to a diary entry."""
+    row = {"diary_id": diary_id, **photo_data}
+    result = supabase.table("photos").insert(row).execute()
+    return result.data[0]
+
+
+async def save_photos(diary_id: str, photos: list[dict]) -> list:
+    """Bulk-insert photo records linked to a diary entry."""
+    rows = [{"diary_id": diary_id, **p} for p in photos]
+    result = supabase.table("photos").insert(rows).execute()
+    return result.data
+
+
+async def get_photos(diary_id: str) -> list:
+    """Fetch all photos for a diary entry."""
+    result = (
+        supabase.table("photos")
+        .select("*")
+        .eq("diary_id", diary_id)
+        .order("extracted_time")
+        .execute()
+    )
+    return result.data
 
 
 # ── Thumb ────────────────────────────────────────────────────────────
