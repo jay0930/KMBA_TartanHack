@@ -54,6 +54,7 @@ runner = DedalusRunner(dedalus_client)
 
 # ── Google Calendar OAuth ─────────────────────────────────────────
 GOOGLE_SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8001")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 TOKEN_PATH = os.path.join(os.path.dirname(__file__), ".google_token.json")
 
@@ -93,11 +94,11 @@ def _get_google_flow() -> Flow:
                 "client_secret": client_secret,
                 "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                 "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": [f"http://localhost:8001/api/auth/google/callback"],
+                "redirect_uris": [f"{BACKEND_URL}/api/auth/google/callback"],
             }
         },
         scopes=GOOGLE_SCOPES,
-        redirect_uri="http://localhost:8001/api/auth/google/callback",
+        redirect_uri=f"{BACKEND_URL}/api/auth/google/callback",
     )
 
 
