@@ -24,3 +24,23 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
 }
+
+// Diary style settings
+
+export type DiaryStyle = 'summary' | 'friendly' | 'emotional' | 'poetic' | 'humorous';
+
+export interface DiarySettings {
+  style: DiaryStyle;
+  language: 'en' | 'ko';
+  includeSpending: boolean;
+  includeSuggestion: boolean;
+  customPrompt?: string;
+}
+
+export const DIARY_STYLE_LABELS: Record<DiaryStyle, { label: string; description: string; emoji: string }> = {
+  summary: { label: 'Simple Summary', description: 'Clean and concise daily recap', emoji: '📋' },
+  friendly: { label: 'Friendly Chat', description: 'Like a friend writing about your day', emoji: '😊' },
+  emotional: { label: 'Emotional & Reflective', description: 'Deep feelings and personal reflections', emoji: '💭' },
+  poetic: { label: 'Poetic & Literary', description: 'Beautiful prose with metaphors', emoji: '✨' },
+  humorous: { label: 'Fun & Witty', description: 'Light-hearted with humor', emoji: '😄' },
+};
