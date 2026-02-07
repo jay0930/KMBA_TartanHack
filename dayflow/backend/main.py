@@ -55,9 +55,31 @@ runner = DedalusRunner(dedalus_client)
 # ── Google Calendar OAuth ─────────────────────────────────────────
 GOOGLE_SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+TOKEN_PATH = os.path.join(os.path.dirname(__file__), ".google_token.json")
 
-# In-memory token storage (single-user hackathon MVP)
-_google_credentials: Credentials | None = None
+
+def _load_credentials() -> Credentials | None:
+    """Load saved Google OAuth credentials from disk."""
+    if not os.path.exists(TOKEN_PATH):
+        return None
+    try:
+        creds = Credentials.from_authorized_user_file(TOKEN_PATH, GOOGLE_SCOPES)
+        if creds and creds.expired and creds.refresh_token:
+            from google.auth.transport.requests import Request
+            creds.refresh(Request())
+            _save_credentials(creds)
+        return creds
+    except Exception:
+        return None
+
+
+def _save_credentials(creds: Credentials) -> None:
+    """Persist Google OAuth credentials to disk."""
+    with open(TOKEN_PATH, "w") as f:
+        f.write(creds.to_json())
+
+
+_google_credentials: Credentials | None = _load_credentials()
 
 def _get_google_flow() -> Flow:
     client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
@@ -323,6 +345,7 @@ async def google_auth_callback(code: str = Query(...)):
     flow = _get_google_flow()
     flow.fetch_token(code=code)
     _google_credentials = flow.credentials
+    _save_credentials(_google_credentials)
     return RedirectResponse(url=f"{FRONTEND_URL}/input?calendar=connected")
 
 
