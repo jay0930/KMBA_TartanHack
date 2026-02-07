@@ -84,6 +84,53 @@ def _save_credentials(creds: Credentials) -> None:
 
 _google_credentials: Credentials | None = _load_credentials()
 
+
+def _extract_calendar_id(calendar_url_or_id: str) -> str:
+    """Extract Google Calendar ID from URL or return the ID if already clean.
+
+    Supports formats:
+    - https://calendar.google.com/calendar/embed?src=CALENDAR_ID&...
+    - https://calendar.google.com/calendar/ical/CALENDAR_ID/public/basic.ics
+    - Direct ID: example@gmail.com or xxxxx@group.calendar.google.com
+    """
+    import urllib.parse
+
+    url = calendar_url_or_id.strip()
+
+    # If it's already a clean email-like ID, return it
+    if "@" in url and "://" not in url:
+        return url
+
+    # Try to parse as URL
+    if "://" in url:
+        parsed = urllib.parse.urlparse(url)
+
+        # Format: ?src=CALENDAR_ID
+        if "src=" in parsed.query:
+            params = urllib.parse.parse_qs(parsed.query)
+            if "src" in params and params["src"]:
+                return params["src"][0]
+
+        # Format: /calendar/ical/CALENDAR_ID/public/basic.ics
+        if "/ical/" in parsed.path:
+            parts = parsed.path.split("/ical/")
+            if len(parts) > 1:
+                cal_id = parts[1].split("/")[0]
+                return urllib.parse.unquote(cal_id)
+
+        # Format: /calendar/embed with encoded src
+        if "/embed" in parsed.path and "src=" in url:
+            # Try to extract from full URL string
+            src_start = url.find("src=") + 4
+            src_end = url.find("&", src_start)
+            if src_end == -1:
+                src_end = len(url)
+            return urllib.parse.unquote(url[src_start:src_end])
+
+    # If nothing worked, return the original (might be a direct ID)
+    return url
+
+
 def _get_google_flow() -> Flow:
     client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
     client_secret = os.environ.get("GOOGLE_CLIENT_SECRET", "")
@@ -220,11 +267,17 @@ async def add_timeline_event(body: ManualEventRequest):
 
     # Generate emoji if missing or generic default
     if not event_data.get("emoji") or event_data["emoji"] in ("📌", "📅", "📝"):
-        emojis = await _assign_emojis([event_data])
-        event_data["emoji"] = emojis[0]
+        try:
+            emojis = await _assign_emojis([event_data])
+            event_data["emoji"] = emojis[0]
+        except Exception:
+            event_data["emoji"] = "📌"
 
-    row = await add_manual_event(body.diary_id, event_data)
-    return {"event": row}
+    try:
+        row = await add_manual_event(body.diary_id, event_data)
+        return {"event": row}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.delete("/api/timeline/{event_id}")
@@ -379,10 +432,7 @@ async def google_auth_status():
     return {"connected": False}
 
 
-DEFAULT_CALENDAR_ID = os.getenv(
-    "GOOGLE_CALENDAR_ID",
-    "eddba18e124499fab104f55803fa60b4c6914e18730200e1533d0ef75c76d4d2@group.calendar.google.com",
-)
+DEFAULT_CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", "primary")
 
 
 @app.get("/api/calendar/fetch")
@@ -403,7 +453,9 @@ async def fetch_calendar(
         from google.auth.transport.requests import Request
         _google_credentials.refresh(Request())
 
-    cal_id = calendar_id or DEFAULT_CALENDAR_ID
+    # Extract calendar ID from URL if needed
+    cal_id_raw = calendar_id or DEFAULT_CALENDAR_ID
+    cal_id = _extract_calendar_id(cal_id_raw)
 
     # Fetch events from Google Calendar API
     service = google_build("calendar", "v3", credentials=_google_credentials)

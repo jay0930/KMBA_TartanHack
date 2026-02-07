@@ -56,15 +56,19 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
     return '';
   };
 
-  // Load saved calendar URL from user profile, then handle OAuth redirect
+  // Load saved calendar URL from user profile and auto-fetch if available
   useEffect(() => {
     const init = async () => {
       try {
         const res = await fetch(`${BACKEND_URL}/api/user?user_id=${userId}`);
         const data = await res.json();
         if (data.calendar_url) {
+          // Auto-fetch calendar events if URL is saved in profile
           setCalendarUrl(data.calendar_url);
-          setShowUrlInput(true);
+          const calId = extractCalendarId(data.calendar_url);
+          if (calId) {
+            await fetchCalendarEvents(calId);
+          }
         }
       } catch {
         // ignore

@@ -282,8 +282,8 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Clear Profile Button */}
-        <div className="mt-8 pt-6 border-t border-gray-100">
+        {/* Clear Profile & Logout Buttons */}
+        <div className="mt-8 pt-6 border-t border-gray-100 flex flex-col gap-3">
           <button
             onClick={async () => {
               if (confirm('Are you sure you want to clear all profile data?')) {
@@ -318,9 +318,19 @@ export default function ProfilePage() {
                 }
               }
             }}
-            className="w-full py-3 text-red-500 text-sm font-semibold hover:bg-red-50 rounded-xl transition-colors"
+            className="w-full py-3 bg-red-500 text-white text-sm font-semibold hover:bg-red-600 rounded-xl transition-colors"
           >
             Clear Profile Data
+          </button>
+
+          <button
+            onClick={async () => {
+              await supabase.auth.signOut();
+              router.replace('/login');
+            }}
+            className="w-full py-3 bg-gray-100 text-gray-700 text-sm font-semibold hover:bg-gray-200 rounded-xl transition-colors"
+          >
+            Logout
           </button>
         </div>
       </div>
