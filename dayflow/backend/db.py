@@ -142,11 +142,17 @@ async def add_manual_event(diary_id: str, event: dict) -> dict:
     """Insert a single manual timeline event."""
     row = {
         "diary_id": diary_id,
-        **event,
+        "time": event.get("time", "12:00"),
+        "emoji": event.get("emoji"),
+        "title": event.get("title", ""),
+        "description": event.get("description"),
+        "location": event.get("location"),
         "source": "manual",
         "spending": event.get("spending", 0),
         "is_deleted": False,
     }
+    # Remove None values to avoid inserting into non-existent columns
+    row = {k: v for k, v in row.items() if v is not None}
     result = supabase.table("timeline_events").insert(row).execute()
     return result.data[0]
 
