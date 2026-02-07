@@ -16,30 +16,9 @@ PHOTO_BUCKET = "photos"
 # ── Test ────────────────────────────────────────────────────────────
 
 async def test_connection() -> dict:
-    """Insert a test row into diaries and read it back to verify the connection."""
-    test_date = "1970-01-01"
-
-    # insert a test row
-    insert_result = (
-        supabase.table("diaries")
-        .insert({"date": test_date, "diary_text": "connection test"})
-        .execute()
-    )
-    row_id = insert_result.data[0]["id"]
-
-    # read it back
-    row = (
-        supabase.table("diaries")
-        .select("*")
-        .eq("id", row_id)
-        .limit(1)
-        .execute()
-    )
-
-    # clean up
-    supabase.table("diaries").delete().eq("id", row_id).execute()
-
-    return {"ok": True, "row": row.data[0] if row.data else None}
+    """Simple read-only check to verify Supabase connectivity."""
+    result = supabase.table("diaries").select("id").limit(1).execute()
+    return {"ok": True, "count": len(result.data)}
 
 
 # ── Diaries ─────────────────────────────────────────────────────────
