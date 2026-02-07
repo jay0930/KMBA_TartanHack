@@ -290,11 +290,6 @@ export default function DayFlowFeed() {
     });
   }, [router]);
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.replace('/login');
-  };
-
   if (!authReady) {
     return (
       <div className="max-w-[393px] mx-auto min-h-dvh flex items-center justify-center" style={{ background: '#ffffff' }}>
@@ -326,13 +321,6 @@ export default function DayFlowFeed() {
               title="Profile"
             >
               👤
-            </button>
-            <button
-              onClick={handleLogout}
-              className="text-xs text-gray-400 hover:text-red-500 transition-colors"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}
-            >
-              Logout
             </button>
           </div>
         </div>

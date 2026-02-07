@@ -53,6 +53,31 @@ function CalendarStep({ onNext }: { onNext: (events: CalendarEvent[]) => void })
     return '';
   };
 
+  // Load calendar URL from user profile on mount and auto-fetch if available
+  useEffect(() => {
+    const loadProfileCalendar = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user?.id) {
+          const res = await fetch(`${BACKEND_URL}/api/user?user_id=${session.user.id}`);
+          const data = await res.json();
+          if (data.calendar_url) {
+            // Auto-fetch calendar events if URL is saved in profile
+            setCalendarUrl(data.calendar_url);
+            const calId = extractCalendarId(data.calendar_url);
+            if (calId) {
+              await fetchCalendarEvents(calId);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load profile calendar URL:', err);
+      }
+    };
+    loadProfileCalendar();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // After OAuth redirect, auto-fetch calendar events
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
