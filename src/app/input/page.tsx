@@ -3,9 +3,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import type { CalendarEvent, PhotoEvent, TimelineEvent } from '@/lib/types';
-import { backendFetch, fetchCurrentUser } from '@/lib/api';
+import { fetchCurrentUser } from '@/lib/api';
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001';
+import { BACKEND_URL } from '@/lib/backend-url';
 
 // ─── STEP INDICATOR ───
 function StepBar({ current, steps }: { current: number; steps: string[] }) {
@@ -39,6 +39,7 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
   const [newTitle, setNewTitle] = useState('');
   const [newLocation, setNewLocation] = useState('');
   const [newTime, setNewTime] = useState('');
+  const [addingEvent, setAddingEvent] = useState(false);
 
   // Extract calendar ID from Google Calendar embed/share URL
   const extractCalendarId = (url: string): string => {
@@ -58,7 +59,7 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
     const init = async () => {
       // Load saved calendar URL from profile
       try {
-        const res = await backendFetch(`/api/user`);
+        const res = await fetch(`/api/user`);
         const data = await res.json();
         if (data.calendar_url) {
           setCalendarUrl(data.calendar_url);
@@ -87,7 +88,7 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
       const today = new Date().toISOString().split('T')[0];
       const params = new URLSearchParams({ date: today });
       if (calId) params.set('calendar_id', calId);
-      const res = await backendFetch(`/api/calendar/fetch?${params}`);
+      const res = await fetch(`/api/calendar/fetch?${params}`);
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.detail || `HTTP ${res.status}`);
@@ -122,12 +123,12 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
     setError(null);
     try {
       // Check if already authenticated
-      const statusRes = await backendFetch(`/api/auth/google/status?user_id=${userId}`);
+      const statusRes = await fetch(`/api/auth/google-status`);
       const status = await statusRes.json();
       if (status.connected) {
         // Already connected — save URL to profile and fetch events
         if (calId) {
-          await backendFetch(`/api/user`, {
+          await fetch(`/api/user`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ calendar_url: calendarUrl }),
@@ -140,7 +141,7 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
       // Save calendar ID to localStorage so we can use it after redirect
       if (calId) {
         localStorage.setItem('dayflow_calendar_id', calId);
-        await backendFetch(`/api/user`, {
+        await fetch(`/api/user`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ calendar_url: calendarUrl }),
@@ -173,20 +174,36 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
     }
   };
 
-  const handleAddEvent = () => {
-    if (!newTitle.trim() || !newTime.trim()) return;
-    const newEvent: CalendarEvent = {
-      time: newTime,
-      title: newTitle,
-      location: newLocation || '',
-      emoji: '📌',
-    };
-    const newIdx = events.length;
-    setEvents(prev => [...prev, newEvent]);
-    setChecked(prev => new Set(prev).add(newIdx));
+  const handleAddEvent = async () => {
+    if (!newTitle.trim() || !newTime.trim() || addingEvent) return;
+    setAddingEvent(true);
+    const title = newTitle.trim();
+    const time = newTime.trim();
+    const location = newLocation || '';
     setNewTitle('');
     setNewLocation('');
     setNewTime('');
+
+    // Get AI emoji first, then add event
+    let emoji = '📌';
+    try {
+      const res = await fetch('/api/emoji', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ titles: [title] }),
+      });
+      const data = await res.json();
+      if (data.emojis?.[0]) emoji = data.emojis[0];
+    } catch {
+      // fallback
+    }
+
+    setEvents(prev => {
+      const newIdx = prev.length;
+      setChecked(c => new Set(c).add(newIdx));
+      return [...prev, { time, title, location, emoji }];
+    });
+    setAddingEvent(false);
   };
 
   const checkedCount = checked.size;
@@ -431,16 +448,17 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
               />
               <button
                 onClick={handleAddEvent}
+                disabled={addingEvent}
                 style={{
                   width: 64, flexShrink: 0, padding: '8px 0',
-                  background: newTitle.trim() && newTime.trim() ? '#0046FF' : '#d1d5db',
+                  background: addingEvent ? '#94a3b8' : newTitle.trim() && newTime.trim() ? '#0046FF' : '#d1d5db',
                   color: 'white', border: 'none', borderRadius: 8,
                   fontSize: 13, fontWeight: 600,
-                  cursor: newTitle.trim() && newTime.trim() ? 'pointer' : 'default',
+                  cursor: addingEvent || !(newTitle.trim() && newTime.trim()) ? 'default' : 'pointer',
                   transition: 'background 0.15s',
                 }}
               >
-                Add
+                {addingEvent ? '...' : 'Add'}
               </button>
             </div>
           </div>
@@ -493,7 +511,7 @@ function PhotoStep({ onNext }: { onNext: (photos: PhotoEvent[]) => void }) {
       const formData = new FormData();
       items.forEach(item => formData.append('files', item.file));
       const today = new Date().toISOString().split('T')[0];
-      const res = await backendFetch(`/api/photos/upload?date=${today}`, {
+      const res = await fetch(`/api/photos/upload?date=${today}`, {
         method: 'POST',
         body: formData,
       });
@@ -1041,7 +1059,7 @@ function DiaryResult({ events, onDone, userId }: { events: TimelineEvent[]; onDo
         },
       };
       console.log('[DEBUG] Saving diary with payload:', payload);
-      const res = await backendFetch('/api/diary/save', {
+      const res = await fetch('/api/diary/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

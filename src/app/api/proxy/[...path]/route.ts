@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001';
+import { BACKEND_URL } from '@/lib/backend-url';
 
 async function proxyToBackend(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const user = await getCurrentUser();

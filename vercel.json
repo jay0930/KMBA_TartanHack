@@ -32,10 +32,5 @@
       ]
     }
   ],
-  "rewrites": [
-    {
-      "source": "/api/:path*",
-      "destination": "https://kmbatartanhack-production.up.railway.app/api/:path*"
-    }
-  ]
+  "rewrites": []
 }
