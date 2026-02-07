@@ -1,4 +1,4 @@
-import { runner } from '@/lib/dedalus';
+import { runner, type RunResult } from '@/lib/dedalus';
 import { NextResponse } from 'next/server';
 import type { TimelineEvent } from '@/lib/types';
 
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
   const response = await runner.run({
     input: diaryPrompt,
     model: "anthropic/claude-sonnet-4-5-20250929",
-  });
+  }) as RunResult;
 
-  return NextResponse.json(JSON.parse(response.final_output));
+  return NextResponse.json(JSON.parse(response.finalOutput));
 }
