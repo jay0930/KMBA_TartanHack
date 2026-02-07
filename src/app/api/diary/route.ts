@@ -5,11 +5,12 @@ import type { TimelineEvent } from '@/lib/types';
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001';
 
 export async function POST(request: Request) {
-  const { timeline }: { timeline: TimelineEvent[] } = await request.json();
+  try {
+    const { timeline }: { timeline: TimelineEvent[] } = await request.json();
 
-  const totalSpending = timeline.reduce((sum, item) => sum + (item.spending || 0), 0);
+    const totalSpending = timeline.reduce((sum, item) => sum + (item.spending || 0), 0);
 
-  const diaryPrompt = `Here is the user's timeline for today:
+    const diaryPrompt = `Here is the user's timeline for today:
 ${JSON.stringify(timeline, null, 2)}
 
 Total spending: $${totalSpending.toFixed(2)}
@@ -32,67 +33,98 @@ Return ONLY a JSON object (no markdown, no code fences):
   "diary_preview": "first 100 chars of diary_text..."
 }`;
 
-  const response = await callDedalus({
-    messages: [{ role: 'user', content: diaryPrompt }],
-  });
+    const response = await callDedalus({
+      messages: [{ role: 'user', content: diaryPrompt }],
+    });
 
-  let text = extractText(response).trim();
-  // Strip markdown code fences if present
-  if (text.startsWith('```')) {
-    text = text.split('\n').slice(1).join('\n').replace(/```\s*$/, '').trim();
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    parsed = {
-      diary_text: text,
-      spending_insight: '',
-      tomorrow_suggestion: '',
-      total_spending: totalSpending,
-    };
-  }
+    let text = extractText(response).trim();
+    // Strip markdown code fences if present
+    if (text.startsWith('```')) {
+      text = text.split('\n').slice(1).join('\n').replace(/```\s*$/, '').trim();
+    }
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = {
+        diary_text: text,
+        spending_insight: '',
+        tomorrow_suggestion: '',
+        total_spending: totalSpending,
+      };
+    }
 
-  // Ensure primary_emoji and diary_preview exist
-  if (!parsed.primary_emoji) {
-    parsed.primary_emoji = timeline[0]?.emoji || '📝';
-  }
-  if (!parsed.diary_preview) {
-    parsed.diary_preview = (parsed.diary_text || '').slice(0, 100);
-  }
-  if (!parsed.emojis || !Array.isArray(parsed.emojis)) {
-    parsed.emojis = timeline.map((e: TimelineEvent) => e.emoji || '📝');
-  }
+    // Ensure primary_emoji and diary_preview exist
+    if (!parsed.primary_emoji) {
+      parsed.primary_emoji = timeline[0]?.emoji || '📝';
+    }
+    if (!parsed.diary_preview) {
+      parsed.diary_preview = (parsed.diary_text || '').slice(0, 100);
+    }
+    if (!parsed.emojis || !Array.isArray(parsed.emojis)) {
+      parsed.emojis = timeline.map((e: TimelineEvent) => e.emoji || '📝');
+    }
 
-  // Save to Supabase via FastAPI backend
-  const today = new Date().toISOString().split('T')[0];
-  const saveRes = await fetch(`${BACKEND_URL}/api/diary/save`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      date: today,
-      diary: {
-        ...parsed,
-        timeline: timeline.map((e, i) => ({
-          ...e,
-          emoji: parsed.emojis?.[i] || e.emoji || '📝',
-        })),
+    // Save to Supabase via FastAPI backend
+    const today = new Date().toISOString().split('T')[0];
+    let saved: any = parsed;
+    try {
+      const saveRes = await fetch(`${BACKEND_URL}/api/diary/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: today,
+          diary: {
+            ...parsed,
+            timeline: timeline.map((e, i) => ({
+              ...e,
+              emoji: parsed.emojis?.[i] || e.emoji || '📝',
+            })),
+          },
+        }),
+      });
+      if (saveRes.ok) {
+        saved = await saveRes.json();
+      } else {
+        console.error('Diary save failed:', saveRes.status, await saveRes.text().catch(() => ''));
+      }
+    } catch (saveErr) {
+      console.error('Diary save network error:', saveErr);
+    }
+
+    // Attach emojis to the response for frontend
+    saved.emojis = parsed.emojis;
+
+    return NextResponse.json(saved);
+  } catch (err: any) {
+    console.error('Diary POST handler error:', err);
+    return NextResponse.json(
+      {
+        diary_text: '',
+        spending_insight: '',
+        tomorrow_suggestion: '',
+        total_spending: 0,
+        emojis: [],
+        error: err.message || 'Internal server error',
       },
-    }),
-  });
-  const saved = await saveRes.json();
-
-  // Attach emojis to the response for frontend
-  saved.emojis = parsed.emojis;
-
-  return NextResponse.json(saved);
+      { status: 500 }
+    );
+  }
 }
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const limit = searchParams.get('limit') || '30';
+  try {
+    const { searchParams } = new URL(request.url);
+    const limit = searchParams.get('limit') || '30';
 
-  const res = await fetch(`${BACKEND_URL}/api/diary/history?limit=${limit}`);
-  const data = await res.json();
-  return NextResponse.json(data);
+    const res = await fetch(`${BACKEND_URL}/api/diary/history?limit=${limit}`);
+    if (!res.ok) {
+      return NextResponse.json({ error: `Backend error: ${res.status}` }, { status: res.status });
+    }
+    const data = await res.json();
+    return NextResponse.json(data);
+  } catch (err: any) {
+    console.error('Diary GET handler error:', err);
+    return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 });
+  }
 }

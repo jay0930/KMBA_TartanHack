@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import type { CalendarEvent, PhotoEvent, TimelineEvent } from '@/lib/types';
 import { supabase } from '@/lib/supabase';
+import { getEmojiForEvent } from '@/lib/emoji';
+import { extractExifTime } from '@/lib/exif';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001';
 
@@ -100,7 +102,7 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
         time: e.time || '12:00',
         title: e.title || 'Untitled',
         location: e.location || '',
-        emoji: e.emoji || '📅',
+        emoji: (e.emoji && e.emoji !== '📅') ? e.emoji : getEmojiForEvent(e.title || 'Untitled'),
       }));
       setEvents(fetched);
       setChecked(new Set(fetched.map((_: any, i: number) => i)));
@@ -179,12 +181,13 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
   };
 
   const handleAddEvent = () => {
-    if (!newTitle.trim() || !newTime.trim()) return;
+    const cleanTitle = newTitle.trim().replace(/=+$/, '');
+    if (!cleanTitle || !newTime.trim()) return;
     const newEvent: CalendarEvent = {
       time: newTime,
-      title: newTitle,
+      title: cleanTitle,
       location: newLocation || '',
-      emoji: '📌',
+      emoji: getEmojiForEvent(cleanTitle),
     };
     const newIdx = events.length;
     setEvents(prev => [...prev, newEvent]);
@@ -444,7 +447,7 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
 // ─── STEP 2: PHOTOS ───
 function PhotoStep({ onNext }: { onNext: (photos: PhotoEvent[]) => void }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [previews, setPreviews] = useState<{ url: string; time: number; file: File }[]>([]);
+  const [previews, setPreviews] = useState<{ url: string; time: number; file: File; exifTime?: string | null }[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzed, setAnalyzed] = useState(false);
   const [captions, setCaptions] = useState<{ emoji: string; caption: string; time: string }[]>([]);
@@ -463,7 +466,7 @@ function PhotoStep({ onNext }: { onNext: (photos: PhotoEvent[]) => void }) {
     return `${h}:${m}`;
   };
 
-  const analyzePhotos = async (items: { url: string; time: number; file: File }[]) => {
+  const analyzePhotos = async (items: { url: string; time: number; file: File; exifTime?: string | null }[]) => {
     setAnalyzing(true);
     try {
       const formData = new FormData();
@@ -473,19 +476,26 @@ function PhotoStep({ onNext }: { onNext: (photos: PhotoEvent[]) => void }) {
         method: 'POST',
         body: formData,
       });
+
+      if (!res.ok) {
+        throw new Error(`Photo upload failed: HTTP ${res.status}`);
+      }
+
       const data = await res.json();
-      if (data.events) {
-        setCaptions(data.events.map((e: any) => ({
+      if (data.events && Array.isArray(data.events)) {
+        setCaptions(data.events.map((e: any, i: number) => ({
           emoji: e.emoji || '📸',
           caption: e.title || e.description || 'Photo',
-          time: e.time || '12:00',
+          time: e.time || items[i]?.exifTime || formatFileTime(items[i]?.time ?? Date.now()),
         })));
+      } else {
+        throw new Error('No events in response');
       }
     } catch (err) {
       console.error('Photo analysis failed:', err);
-      setCaptions(items.map((_, i) => ({
+      setCaptions(items.map((item, i) => ({
         ...MOCK_CAPTIONS[i % MOCK_CAPTIONS.length],
-        time: formatFileTime(items[i].time),
+        time: item.exifTime || formatFileTime(item.time),
       })));
     } finally {
       setAnalyzing(false);
@@ -493,20 +503,38 @@ function PhotoStep({ onNext }: { onNext: (photos: PhotoEvent[]) => void }) {
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    const newItems = Array.from(files).map(f => ({
-      url: URL.createObjectURL(f),
-      time: f.lastModified,
-      file: f,
-    }));
+    const target = e.target;
+
+    const fileArray = Array.from(files);
+    const exifTimes = await Promise.all(
+      fileArray.map(f => extractExifTime(f))
+    );
+
+    const newItems = fileArray.map((f, i) => {
+      let timeMs = f.lastModified;
+      if (exifTimes[i]) {
+        const [h, m] = exifTimes[i]!.split(':').map(Number);
+        const today = new Date();
+        today.setHours(h, m, 0, 0);
+        timeMs = today.getTime();
+      }
+      return {
+        url: URL.createObjectURL(f),
+        time: timeMs,
+        file: f,
+        exifTime: exifTimes[i] || null,
+      };
+    });
+
     const updated = [...previews, ...newItems]
       .sort((a, b) => a.time - b.time)
       .slice(0, 10);
     setPreviews(updated);
     // reset input so same file can be re-selected
-    e.target.value = '';
+    target.value = '';
     // analyze with AI
     analyzePhotos(updated);
   };
@@ -966,7 +994,21 @@ function DiaryResult({ events, onDone, userId }: { events: TimelineEvent[]; onDo
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ timeline: events }),
         });
-        const data = await res.json();
+
+        if (!res.ok) {
+          const errorText = await res.text().catch(() => '');
+          throw new Error(`Diary API error ${res.status}: ${errorText}`);
+        }
+
+        let data;
+        try {
+          const text = await res.text();
+          data = text ? JSON.parse(text) : {};
+        } catch (parseErr) {
+          console.error('Diary response parse error:', parseErr);
+          throw new Error('Invalid JSON response from diary API');
+        }
+
         const total = data.total_spending || events.reduce((s, e) => s + (e.spending || 0), 0);
         setDiary({
           text: data.diary_text || '',
@@ -1001,16 +1043,17 @@ function DiaryResult({ events, onDone, userId }: { events: TimelineEvent[]; onDo
         date: today,
         user_id: userId,
         diary: {
-          diary_text: diary.text,
-          spending_insight: diary.insight,
-          tomorrow_suggestion: diary.tip,
-          total_spending: Math.round(diary.total),
-          diary_preview: diary.text.slice(0, 100),
+          diary_text: diary.text || '',
+          spending_insight: diary.insight || '',
+          tomorrow_suggestion: diary.tip || '',
+          total_spending: Math.round(diary.total || 0),
+          diary_preview: (diary.text || '').slice(0, 100),
           primary_emoji: events[0]?.emoji || '📝',
           timeline: events.map(e => ({
-            time: e.time,
-            emoji: e.emoji,
-            title: e.title,
+            time: e.time || '12:00',
+            emoji: e.emoji || '📅',
+            title: e.title || '',
+            description: e.description || '',
             spending: Math.round((e.spending || 0)),
             source: e.source || 'calendar',
           })),
