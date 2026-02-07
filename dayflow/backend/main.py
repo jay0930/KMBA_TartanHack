@@ -385,10 +385,7 @@ async def google_auth_status():
     return {"connected": False}
 
 
-DEFAULT_CALENDAR_ID = os.getenv(
-    "GOOGLE_CALENDAR_ID",
-    "eddba18e124499fab104f55803fa60b4c6914e18730200e1533d0ef75c76d4d2@group.calendar.google.com",
-)
+DEFAULT_CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", "primary")
 
 
 @app.get("/api/calendar/fetch")
