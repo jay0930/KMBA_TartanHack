@@ -37,7 +37,18 @@ function CalendarStep({ onNext }: { onNext: (events: CalendarEvent[]) => void })
   const [newLocation, setNewLocation] = useState('');
   const [newTime, setNewTime] = useState('');
 
-  const handleConnect = async () => {
+  // After OAuth redirect, auto-fetch calendar events
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('calendar') === 'connected') {
+      // Clean URL
+      window.history.replaceState({}, '', '/input');
+      fetchCalendarEvents();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const fetchCalendarEvents = async () => {
     setLoading(true);
     setError(null);
     try {
@@ -61,6 +72,27 @@ function CalendarStep({ onNext }: { onNext: (events: CalendarEvent[]) => void })
       console.error('Calendar fetch failed:', err);
       setError(err.message || 'Failed to connect to Google Calendar');
     } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleConnect = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Check if already authenticated
+      const statusRes = await fetch(`${BACKEND_URL}/api/auth/google/status`);
+      const status = await statusRes.json();
+      if (status.connected) {
+        // Already connected — just fetch events
+        await fetchCalendarEvents();
+        return;
+      }
+      // Not connected — redirect to Google OAuth
+      window.location.href = `${BACKEND_URL}/api/auth/google`;
+    } catch (err: any) {
+      console.error('Calendar connect failed:', err);
+      setError(err.message || 'Failed to connect to Google Calendar');
       setLoading(false);
     }
   };

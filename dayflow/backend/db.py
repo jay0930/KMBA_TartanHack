@@ -197,6 +197,10 @@ async def save_calendar_events(date: str, events: list[dict], diary_id: str | No
     """
     # clear old events for this date, then bulk-insert
     supabase.table("calendar_events").delete().eq("date", date).execute()
+    # Also delete by calendar_id to avoid unique constraint violations from multi-day events
+    cal_ids = [ev.get("calendar_id") for ev in events if ev.get("calendar_id")]
+    for cid in cal_ids:
+        supabase.table("calendar_events").delete().eq("calendar_id", cid).execute()
 
     rows = []
     for ev in events:

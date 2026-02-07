@@ -1,10 +1,15 @@
 import asyncio
 import base64
+import os
 
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from dedalus_labs import AsyncDedalus, DedalusRunner
+from google_auth_oauthlib.flow import Flow
+from googleapiclient.discovery import build as google_build
+from google.oauth2.credentials import Credentials
 
 import json
 
@@ -46,6 +51,32 @@ app.add_middleware(
 # ── Dedalus client ──────────────────────────────────────────────────
 dedalus_client = AsyncDedalus()  # uses DEDALUS_API_KEY env var
 runner = DedalusRunner(dedalus_client)
+
+# ── Google Calendar OAuth ─────────────────────────────────────────
+GOOGLE_SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
+# In-memory token storage (single-user hackathon MVP)
+_google_credentials: Credentials | None = None
+
+def _get_google_flow() -> Flow:
+    client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
+    client_secret = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+    if not client_id or not client_secret:
+        raise HTTPException(status_code=500, detail="GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET env vars required")
+    return Flow.from_client_config(
+        {
+            "web": {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [f"http://localhost:8001/api/auth/google/callback"],
+            }
+        },
+        scopes=GOOGLE_SCOPES,
+        redirect_uri="http://localhost:8001/api/auth/google/callback",
+    )
 
 
 # ── Request models ──────────────────────────────────────────────────
@@ -108,11 +139,6 @@ class CalendarEvent(BaseModel):
     location: str | None = None
     all_day: bool = False
     calendar_id: str | None = None  # Google event ID for dedup
-
-
-class CalendarFetchResponse(BaseModel):
-    """Structured output from LLM after reading Google Calendar via MCP."""
-    events: list[CalendarEvent]
 
 
 class ManualEventRequest(BaseModel):
@@ -279,57 +305,118 @@ async def save_calendar(body: SaveCalendarRequest):
     }
 
 
+@app.get("/api/auth/google")
+async def google_auth_start():
+    """Start Google OAuth flow — redirects user to Google consent screen."""
+    flow = _get_google_flow()
+    auth_url, _ = flow.authorization_url(
+        access_type="offline",
+        prompt="consent",
+    )
+    return RedirectResponse(url=auth_url)
+
+
+@app.get("/api/auth/google/callback")
+async def google_auth_callback(code: str = Query(...)):
+    """Handle Google OAuth callback — exchange code for token, redirect to frontend."""
+    global _google_credentials
+    flow = _get_google_flow()
+    flow.fetch_token(code=code)
+    _google_credentials = flow.credentials
+    return RedirectResponse(url=f"{FRONTEND_URL}/input?calendar=connected")
+
+
+@app.get("/api/auth/google/status")
+async def google_auth_status():
+    """Check if Google Calendar is authenticated."""
+    if _google_credentials and _google_credentials.valid:
+        return {"connected": True}
+    if _google_credentials and _google_credentials.expired and _google_credentials.refresh_token:
+        from google.auth.transport.requests import Request
+        _google_credentials.refresh(Request())
+        return {"connected": True}
+    return {"connected": False}
+
+
+DEFAULT_CALENDAR_ID = os.getenv(
+    "GOOGLE_CALENDAR_ID",
+    "eddba18e124499fab104f55803fa60b4c6914e18730200e1533d0ef75c76d4d2@group.calendar.google.com",
+)
+
+
 @app.get("/api/calendar/fetch")
-async def fetch_calendar(date: str = Query(..., description="Date in YYYY-MM-DD format")):
-    """Fetch Google Calendar events for a date via Dedalus MCP,
+async def fetch_calendar(
+    date: str = Query(..., description="Date in YYYY-MM-DD format"),
+    calendar_id: str = Query(default="", description="Google Calendar ID (defaults to env)"),
+    tz: str = Query(default="America/New_York", description="Timezone (e.g. America/New_York, Asia/Seoul)"),
+):
+    """Fetch Google Calendar events for a date via Google Calendar API,
     save to DB, and return them with emojis."""
+    global _google_credentials
 
-    prompt = CALENDAR_FETCH_PROMPT.replace("{date}", date)
+    if not _google_credentials:
+        raise HTTPException(status_code=401, detail="Google Calendar not connected. Visit /api/auth/google first.")
+
+    # Refresh token if expired
+    if _google_credentials.expired and _google_credentials.refresh_token:
+        from google.auth.transport.requests import Request
+        _google_credentials.refresh(Request())
+
+    cal_id = calendar_id or DEFAULT_CALENDAR_ID
+
+    # Fetch events from Google Calendar API
+    service = google_build("calendar", "v3", credentials=_google_credentials)
 
     try:
-        result = await runner.run(
-            model="anthropic/claude-sonnet-4-5-20250929",
-            input=[{"role": "user", "content": prompt}],
-            mcp_servers=["google-calendar-mcp"],
-            response_format=CalendarFetchResponse,
-            max_steps=5,
-        )
+        from datetime import date as date_cls, datetime, timedelta
+        from zoneinfo import ZoneInfo
+
+        zone = ZoneInfo(tz)
+        d = date_cls.fromisoformat(date)
+        day_start = datetime(d.year, d.month, d.day, tzinfo=zone)
+        day_end = day_start + timedelta(days=1)
+
+        result = service.events().list(
+            calendarId=cal_id,
+            timeMin=day_start.isoformat(),
+            timeMax=day_end.isoformat(),
+            singleEvents=True,
+            orderBy="startTime",
+        ).execute()
     except Exception as e:
-        raise HTTPException(
-            status_code=502,
-            detail=f"Failed to fetch calendar from Dedalus MCP: {str(e)}"
-        )
+        raise HTTPException(status_code=502, detail=f"Google Calendar API error: {str(e)}")
 
-    # Parse the structured output
-    try:
-        if isinstance(result.final_output, str):
-            text = result.final_output.strip()
-            if text.startswith("```"):
-                text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-            parsed = CalendarFetchResponse.model_validate_json(text)
-        else:
-            parsed = result.final_output
-        events = parsed.events
-    except Exception:
-        try:
-            raw = json.loads(result.final_output)
-            if isinstance(raw, list):
-                events = [CalendarEvent(**e) for e in raw]
-            elif isinstance(raw, dict) and "events" in raw:
-                events = [CalendarEvent(**e) for e in raw["events"]]
-            else:
-                events = []
-        except Exception:
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to parse calendar events from LLM response"
-            )
+    google_events = result.get("items", [])
 
-    if not events:
+    if not google_events:
         return {"date": date, "events": [], "diary_id": None, "saved": 0}
 
-    # Generate emojis
-    event_dicts = [e.model_dump() for e in events]
+    # Convert Google events to our CalendarEvent format, filter to requested date only
+    event_dicts = []
+    for ge in google_events:
+        start = ge.get("start", {})
+        end = ge.get("end", {})
+        start_time = start.get("dateTime", start.get("date", ""))
+        end_time = end.get("dateTime", end.get("date", ""))
+        all_day = "date" in start and "dateTime" not in start
+
+        # Skip events that don't start on the requested date
+        # (multi-day events that merely overlap are excluded)
+        event_date = start_time[:10]  # "YYYY-MM-DD"
+        if event_date != date:
+            continue
+
+        event_dicts.append({
+            "title": ge.get("summary", "Untitled"),
+            "description": ge.get("description"),
+            "start_time": start_time,
+            "end_time": end_time,
+            "location": ge.get("location"),
+            "all_day": all_day,
+            "calendar_id": ge.get("id"),
+        })
+
+    # Generate emojis via LLM
     emojis = await _assign_emojis(event_dicts)
     for i, e in enumerate(event_dicts):
         e["emoji"] = emojis[i] if i < len(emojis) else "📅"
@@ -344,8 +431,8 @@ async def fetch_calendar(date: str = Query(..., description="Date in YYYY-MM-DD 
     # Return frontend-friendly format
     frontend_events = []
     for e in event_dicts:
-        start = e.get("start_time", "")
-        time_str = start[11:16] if len(start) > 16 else start[:5] if len(start) >= 5 else "12:00"
+        start_str = e.get("start_time", "")
+        time_str = start_str[11:16] if len(start_str) > 16 else start_str[:5] if len(start_str) >= 5 else "12:00"
         frontend_events.append({
             "time": time_str,
             "title": e.get("title", ""),
@@ -376,24 +463,6 @@ async def delete_calendar(date: str = Query(...)):
     """Delete all calendar events for a date (re-import)."""
     await db_delete_calendar_events(date)
     return {"ok": True}
-
-
-# ── Calendar fetch (Dedalus MCP) ──────────────────────────────────
-
-CALENDAR_FETCH_PROMPT = """\
-Fetch all Google Calendar events for the date {date}.
-For each event, extract:
-- title: the event summary/title
-- description: the event description (if any)
-- start_time: start time in ISO 8601 format (e.g., "2026-02-07T10:00:00")
-- end_time: end time in ISO 8601 format (if any)
-- location: event location (if any)
-- all_day: true if it's an all-day event, false otherwise
-- calendar_id: the Google Calendar event ID (for dedup)
-
-Return all events for {date} as a structured list.
-If there are no events, return an empty list.
-"""
 
 
 # ── Emoji generation (Dedalus LLM) ──────────────────────────────────
