@@ -1,4 +1,5 @@
 import os
+import uuid
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
@@ -8,6 +9,8 @@ SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_ANON_KEY"]
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+PHOTO_BUCKET = "photos"
 
 
 # ── Test ────────────────────────────────────────────────────────────
@@ -176,6 +179,21 @@ async def get_photos(diary_id: str) -> list:
         .execute()
     )
     return result.data
+
+
+# ── Storage ──────────────────────────────────────────────────────────
+
+async def upload_photo_to_storage(file_bytes: bytes, filename: str, content_type: str = "image/jpeg") -> str:
+    """Upload an image to Supabase Storage and return the public URL."""
+    ext = filename.rsplit(".", 1)[-1] if "." in filename else "jpg"
+    path = f"{uuid.uuid4().hex}.{ext}"
+    supabase.storage.from_(PHOTO_BUCKET).upload(
+        path,
+        file_bytes,
+        file_options={"content-type": content_type},
+    )
+    public_url = supabase.storage.from_(PHOTO_BUCKET).get_public_url(path)
+    return public_url
 
 
 # ── Thumb ────────────────────────────────────────────────────────────

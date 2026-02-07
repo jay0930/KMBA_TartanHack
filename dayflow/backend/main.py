@@ -6,6 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dedalus_labs import AsyncDedalus, DedalusRunner
 
+import json
+
 from db import (
     test_connection,
     save_diary as db_save_diary,
@@ -20,6 +22,7 @@ from db import (
     save_photo as db_save_photo,
     save_photos as db_save_photos,
     get_photos as db_get_photos,
+    upload_photo_to_storage,
 )
 
 app = FastAPI()
@@ -203,22 +206,21 @@ async def delete_calendar(date: str = Query(...)):
 
 # ── Photo analysis (Dedalus Vision) ─────────────────────────────────
 
-PHOTO_ANALYSIS_PROMPT = (
-    "Analyze this photo from someone's day. "
-    "What activity is shown? Where was it taken? "
-    "What time of day does it look like? "
-    "What food or drinks are visible? "
-    "Be concise (2-3 sentences)."
-)
+PHOTO_ANALYSIS_PROMPT = """\
+Analyze this photo from someone's day and return a JSON object with these fields:
+- "time": estimated time of day in HH:MM format (24h). Guess from lighting/context.
+- "title": short 3-6 word description of the activity (e.g. "Latte art photo", "Lunch at noodle bar")
+- "emoji": single emoji that best represents this moment
+- "description": 1-2 sentence description of what's in the photo
+
+Return ONLY the JSON object, no markdown or extra text. Example:
+{"time": "09:15", "title": "Morning coffee ritual", "emoji": "☕", "description": "A latte with beautiful art at a cozy cafe."}
+"""
 
 
-async def _analyze_one(file: UploadFile) -> dict:
-    """Send a single image to Dedalus for vision analysis."""
-    raw = await file.read()
+async def _analyze_one(raw: bytes, mime: str, filename: str) -> dict:
+    """Send a single image to Dedalus for vision analysis and return structured data."""
     b64 = base64.b64encode(raw).decode()
-
-    # Detect MIME type from upload or fall back to jpeg
-    mime = file.content_type or "image/jpeg"
 
     result = await runner.run(
         model="anthropic/claude-sonnet-4-5-20250929",
@@ -233,26 +235,109 @@ async def _analyze_one(file: UploadFile) -> dict:
         max_steps=1,
     )
 
+    # Parse structured JSON from AI response
+    text = result.final_output or ""
+    # Strip markdown code fences if present
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        parsed = {
+            "time": "12:00",
+            "title": filename or "Photo",
+            "emoji": "📸",
+            "description": text,
+        }
+
     return {
-        "filename": file.filename,
-        "analysis": result.final_output,
+        "time": parsed.get("time", "12:00"),
+        "title": parsed.get("title", "Photo"),
+        "emoji": parsed.get("emoji", "📸"),
+        "description": parsed.get("description", ""),
+        "source": "photo",
     }
+
+
+@app.post("/api/photos/upload")
+async def upload_and_analyze_photos(files: list[UploadFile] = File(...)):
+    """Upload photos to Supabase Storage + analyze with AI.
+
+    Returns:
+        - photos: list of { url, filename }
+        - events: list of { time, title, emoji, source } (structured PhotoEvent)
+    """
+    if len(files) > 10:
+        return {"error": "Maximum 10 images allowed"}
+
+    photo_urls = []
+    analysis_tasks = []
+
+    for f in files:
+        raw = await f.read()
+        mime = f.content_type or "image/jpeg"
+        fname = f.filename or "photo.jpg"
+
+        # Upload to Supabase Storage
+        try:
+            url = await upload_photo_to_storage(raw, fname, mime)
+            photo_urls.append({"url": url, "filename": fname})
+        except Exception as e:
+            photo_urls.append({"url": None, "filename": fname, "error": str(e)})
+
+        # Queue analysis
+        analysis_tasks.append(_analyze_one(raw, mime, fname))
+
+    # Run all analyses in parallel
+    analyses = await asyncio.gather(*analysis_tasks, return_exceptions=True)
+
+    events = []
+    for i, a in enumerate(analyses):
+        if isinstance(a, Exception):
+            events.append({
+                "time": "12:00",
+                "title": files[i].filename or "Photo",
+                "emoji": "📸",
+                "description": str(a),
+                "source": "photo",
+            })
+        else:
+            # Attach photo URL to the event
+            if i < len(photo_urls) and photo_urls[i].get("url"):
+                a["photo_url"] = photo_urls[i]["url"]
+            events.append(a)
+
+    return {"photos": photo_urls, "events": events}
 
 
 @app.post("/api/photos/analyze")
 async def analyze_photos(files: list[UploadFile] = File(...)):
-    """Accept up to 5 images and return AI-powered photo analyses (Dedalus Vision)."""
+    """Analyze photos with AI only (no storage upload). Returns structured PhotoEvent data."""
     if len(files) > 5:
         return {"error": "Maximum 5 images allowed"}
 
-    tasks = [_analyze_one(f) for f in files]
-    analyses = await asyncio.gather(*tasks, return_exceptions=True)
+    analysis_tasks = []
+    for f in files:
+        raw = await f.read()
+        mime = f.content_type or "image/jpeg"
+        fname = f.filename or "photo.jpg"
+        analysis_tasks.append(_analyze_one(raw, mime, fname))
 
-    results = []
-    for a in analyses:
+    analyses = await asyncio.gather(*analysis_tasks, return_exceptions=True)
+
+    events = []
+    for i, a in enumerate(analyses):
         if isinstance(a, Exception):
-            results.append({"error": str(a)})
+            events.append({
+                "time": "12:00",
+                "title": files[i].filename or "Photo",
+                "emoji": "📸",
+                "description": str(a),
+                "source": "photo",
+            })
         else:
-            results.append(a)
+            events.append(a)
 
-    return {"analyses": results}
+    return {"events": events}
