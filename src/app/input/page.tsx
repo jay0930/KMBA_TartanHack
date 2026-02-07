@@ -243,14 +243,19 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
               Could not connect to Google Calendar
             </div>
             <div style={{ fontSize: 12, color: '#991B1B' }}>{error}</div>
-            <div
-              onClick={handleConnect}
-              style={{
-                marginTop: 8, fontSize: 12, color: '#0046FF',
-                cursor: 'pointer', textDecoration: 'underline',
-              }}
-            >
-              Try again
+            <div style={{ display: 'flex', gap: 16, marginTop: 8 }}>
+              <div
+                onClick={handleConnect}
+                style={{ fontSize: 12, color: '#0046FF', cursor: 'pointer', textDecoration: 'underline' }}
+              >
+                Try again
+              </div>
+              <div
+                onClick={() => { setError(null); setEvents([]); setChecked(new Set()); setConnected(true); }}
+                style={{ fontSize: 12, color: '#666', cursor: 'pointer', textDecoration: 'underline' }}
+              >
+                Skip & add manually
+              </div>
             </div>
           </div>
         </div>
