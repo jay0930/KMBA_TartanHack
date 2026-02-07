@@ -28,9 +28,10 @@ function StepBar({ current, steps }: { current: number; steps: string[] }) {
 }
 
 // ─── STEP 1: CALENDAR ───
-function CalendarStep({ onNext }: { onNext: (events: CalendarEvent[]) => void }) {
+function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) => void; userId: string }) {
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadingProfile, setLoadingProfile] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [checked, setChecked] = useState<Set<number>>(new Set());
@@ -53,17 +54,34 @@ function CalendarStep({ onNext }: { onNext: (events: CalendarEvent[]) => void })
     return '';
   };
 
-  // After OAuth redirect, auto-fetch calendar events
+  // Load saved calendar URL from user profile, then handle OAuth redirect
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('calendar') === 'connected') {
-      window.history.replaceState({}, '', '/input');
-      const savedCalId = localStorage.getItem('dayflow_calendar_id') || undefined;
-      if (savedCalId) localStorage.removeItem('dayflow_calendar_id');
-      fetchCalendarEvents(savedCalId);
-    }
+    const init = async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/user?user_id=${userId}`);
+        const data = await res.json();
+        if (data.calendar_url) {
+          setCalendarUrl(data.calendar_url);
+          setShowUrlInput(true);
+        }
+      } catch {
+        // ignore
+      } finally {
+        setLoadingProfile(false);
+      }
+
+      // After OAuth redirect, auto-fetch calendar events
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('calendar') === 'connected') {
+        window.history.replaceState({}, '', '/input');
+        const savedCalId = localStorage.getItem('dayflow_calendar_id') || undefined;
+        if (savedCalId) localStorage.removeItem('dayflow_calendar_id');
+        fetchCalendarEvents(savedCalId);
+      }
+    };
+    init();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [userId]);
 
   const fetchCalendarEvents = async (calId?: string) => {
     setLoading(true);
@@ -111,9 +129,13 @@ function CalendarStep({ onNext }: { onNext: (events: CalendarEvent[]) => void })
       const status = await statusRes.json();
       if (status.connected) {
         // Already connected — fetch events with calendar ID
-        // Save calendar URL to profile
+        // Save calendar URL to user profile in DB
         if (calendarUrl) {
-          localStorage.setItem('dayflow_calendar_url', calendarUrl);
+          fetch(`${BACKEND_URL}/api/user?user_id=${userId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ calendar_url: calendarUrl }),
+          }).catch(() => {});
         }
         await fetchCalendarEvents(calId || undefined);
         return;
@@ -121,9 +143,13 @@ function CalendarStep({ onNext }: { onNext: (events: CalendarEvent[]) => void })
       // Not connected — redirect to Google OAuth
       // Save calendar ID to localStorage so we can use it after redirect
       if (calId) localStorage.setItem('dayflow_calendar_id', calId);
-      // Save calendar URL to profile
+      // Save calendar URL to user profile in DB
       if (calendarUrl) {
-        localStorage.setItem('dayflow_calendar_url', calendarUrl);
+        fetch(`${BACKEND_URL}/api/user?user_id=${userId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ calendar_url: calendarUrl }),
+        }).catch(() => {});
       }
       window.location.href = `${BACKEND_URL}/api/auth/google`;
     } catch (err: any) {
@@ -1212,7 +1238,7 @@ export default function DayFlowInput() {
       {/* Step content */}
       <div style={{ animation: 'fade-in-up 0.4s ease-out', paddingBottom: 'calc(40px + var(--safe-bottom))' }}>
         {step === 0 && (
-          <CalendarStep onNext={(events) => {
+          <CalendarStep userId={userId} onNext={(events) => {
             setCalendarEvents(events);
             setStep(1);
           }} />

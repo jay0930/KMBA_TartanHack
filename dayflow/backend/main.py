@@ -43,7 +43,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_origins=["http://localhost:3000", "http://localhost:3001", "https://kmbatartanhack-production.up.railway.app"],
     allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
@@ -179,6 +179,7 @@ class SaveCalendarRequest(BaseModel):
 
 
 class UserProfile(BaseModel):
+    email: str | None = None
     name: str | None = None
     gender: str | None = None
     age: int | None = None
@@ -719,6 +720,7 @@ async def get_user_profile(user_id: str = Query(...)):
     if not user:
         return {
             "user_id": user_id,
+            "email": None,
             "name": None,
             "gender": None,
             "age": None,
