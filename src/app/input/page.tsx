@@ -33,27 +33,45 @@ function CalendarStep({ onNext }: { onNext: (events: CalendarEvent[]) => void })
   const [error, setError] = useState<string | null>(null);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [checked, setChecked] = useState<Set<number>>(new Set());
+  const [calendarUrl, setCalendarUrl] = useState('');
+  const [showUrlInput, setShowUrlInput] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newLocation, setNewLocation] = useState('');
   const [newTime, setNewTime] = useState('');
+
+  // Extract calendar ID from Google Calendar embed/share URL
+  const extractCalendarId = (url: string): string => {
+    // Handle embed URL: ...?src=CALENDAR_ID&...
+    const srcMatch = url.match(/[?&]src=([^&]+)/);
+    if (srcMatch) return decodeURIComponent(srcMatch[1]);
+    // Handle /calendar/ical/CALENDAR_ID/...
+    const icalMatch = url.match(/\/calendar\/ical\/([^/]+)/);
+    if (icalMatch) return decodeURIComponent(icalMatch[1]);
+    // If it looks like a raw calendar ID (contains @), use as-is
+    if (url.includes('@')) return url.trim();
+    return '';
+  };
 
   // After OAuth redirect, auto-fetch calendar events
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('calendar') === 'connected') {
-      // Clean URL
       window.history.replaceState({}, '', '/input');
-      fetchCalendarEvents();
+      const savedCalId = localStorage.getItem('dayflow_calendar_id') || undefined;
+      if (savedCalId) localStorage.removeItem('dayflow_calendar_id');
+      fetchCalendarEvents(savedCalId);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const fetchCalendarEvents = async () => {
+  const fetchCalendarEvents = async (calId?: string) => {
     setLoading(true);
     setError(null);
     try {
       const today = new Date().toISOString().split('T')[0];
-      const res = await fetch(`${BACKEND_URL}/api/calendar/fetch?date=${today}`);
+      const params = new URLSearchParams({ date: today });
+      if (calId) params.set('calendar_id', calId);
+      const res = await fetch(`${BACKEND_URL}/api/calendar/fetch?${params}`);
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.detail || `HTTP ${res.status}`);
@@ -77,6 +95,13 @@ function CalendarStep({ onNext }: { onNext: (events: CalendarEvent[]) => void })
   };
 
   const handleConnect = async () => {
+    // If URL input is shown, extract calendar ID first
+    const calId = calendarUrl ? extractCalendarId(calendarUrl) : '';
+    if (showUrlInput && !calId) {
+      setError('Please paste a valid Google Calendar URL or calendar ID');
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
@@ -84,11 +109,13 @@ function CalendarStep({ onNext }: { onNext: (events: CalendarEvent[]) => void })
       const statusRes = await fetch(`${BACKEND_URL}/api/auth/google/status`);
       const status = await statusRes.json();
       if (status.connected) {
-        // Already connected — just fetch events
-        await fetchCalendarEvents();
+        // Already connected — fetch events with calendar ID
+        await fetchCalendarEvents(calId || undefined);
         return;
       }
       // Not connected — redirect to Google OAuth
+      // Save calendar ID to localStorage so we can use it after redirect
+      if (calId) localStorage.setItem('dayflow_calendar_id', calId);
       window.location.href = `${BACKEND_URL}/api/auth/google`;
     } catch (err: any) {
       console.error('Calendar connect failed:', err);
@@ -181,22 +208,64 @@ function CalendarStep({ onNext }: { onNext: (events: CalendarEvent[]) => void })
           </div>
         </div>
       ) : !connected ? (
-        <div
-          onClick={handleConnect}
-          className="hover:border-[#73C8D2]"
-          style={{
-            border: '2px dashed #d1d5db',
-            borderRadius: 16,
-            padding: '40px 24px',
-            textAlign: 'center',
-            cursor: 'pointer',
-            background: '#fafafa',
-            transition: 'all 0.2s',
-          }}
-        >
-          <div style={{ fontSize: 32, marginBottom: 12 }}>📅</div>
-          <div style={{ fontSize: 16, fontWeight: 600, color: '#333', marginBottom: 4 }}>Connect Google Calendar</div>
-          <div style={{ fontSize: 13, color: '#999' }}>We&apos;ll pull today&apos;s events</div>
+        <div>
+          {!showUrlInput ? (
+            <div
+              onClick={() => setShowUrlInput(true)}
+              className="hover:border-[#73C8D2]"
+              style={{
+                border: '2px dashed #d1d5db',
+                borderRadius: 16,
+                padding: '40px 24px',
+                textAlign: 'center',
+                cursor: 'pointer',
+                background: '#fafafa',
+                transition: 'all 0.2s',
+              }}
+            >
+              <div style={{ fontSize: 32, marginBottom: 12 }}>📅</div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: '#333', marginBottom: 4 }}>Connect Google Calendar</div>
+              <div style={{ fontSize: 13, color: '#999' }}>We&apos;ll pull today&apos;s events</div>
+            </div>
+          ) : (
+            <div style={{
+              border: '1px solid #e5e7eb', borderRadius: 16,
+              padding: '24px', background: '#fafafa',
+            }}>
+              <div style={{ fontSize: 15, fontWeight: 600, color: '#333', marginBottom: 12 }}>
+                Paste your Google Calendar URL
+              </div>
+              <div style={{ fontSize: 12, color: '#999', marginBottom: 12 }}>
+                Google Calendar &rarr; Settings &rarr; Calendar ID, or share embed link
+              </div>
+              <input
+                value={calendarUrl}
+                onChange={(e) => setCalendarUrl(e.target.value)}
+                placeholder="https://calendar.google.com/calendar/embed?src=..."
+                onKeyDown={(e) => e.key === 'Enter' && handleConnect()}
+                style={{
+                  width: '100%', padding: '12px 14px', fontSize: 13,
+                  border: '1px solid #d1d5db', borderRadius: 10,
+                  outline: 'none', background: 'white',
+                  marginBottom: 12, boxSizing: 'border-box',
+                }}
+              />
+              <button
+                onClick={handleConnect}
+                disabled={!calendarUrl.trim()}
+                style={{
+                  width: '100%', padding: '12px',
+                  background: calendarUrl.trim() ? '#0046FF' : '#d1d5db',
+                  color: 'white', border: 'none', borderRadius: 10,
+                  fontSize: 14, fontWeight: 600,
+                  cursor: calendarUrl.trim() ? 'pointer' : 'default',
+                  transition: 'background 0.15s',
+                }}
+              >
+                Connect
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
