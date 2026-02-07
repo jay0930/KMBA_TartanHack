@@ -218,6 +218,7 @@ export default function DayFlowFeed() {
         photo_url?: string;
         spending_insight?: string;
         tomorrow_suggestion?: string;
+        timeline_events?: Array<{ emoji?: string; time?: string }>;
       }>) => {
         if (data && data.length > 0) {
           const mapped: MockDiary[] = data.map((d, i) => {
@@ -225,11 +226,13 @@ export default function DayFlowFeed() {
             const formatted = dateObj.toLocaleDateString('en-US', {
               weekday: 'long', month: 'short', day: 'numeric',
             });
+            const tlEmojis = d.timeline_events?.map(e => e.emoji || '📝').filter(Boolean) || [];
+            const tlTimes = d.timeline_events?.map(e => e.time || '').filter(Boolean) || [];
             return {
               id: d.id,
               date: formatted,
-              emojis: [d.primary_emoji || '📝'],
-              times: [],
+              emojis: tlEmojis.length > 0 ? tlEmojis : [d.primary_emoji || '📝'],
+              times: tlTimes,
               preview: d.diary_preview || d.diary_text?.slice(0, 100) || 'No preview available',
               total: d.total_spending || 0,
               hasPhoto: !!d.photo_url,
