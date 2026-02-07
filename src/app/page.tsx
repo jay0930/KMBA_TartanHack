@@ -7,12 +7,12 @@ import EmojiTimeline from '@/components/EmojiTimeline';
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
 const GRADIENTS = [
-  'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-  'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-  'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)',
-  'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)',
-  'linear-gradient(135deg, #89f7fe 0%, #66a6ff 100%)',
-  'linear-gradient(135deg, #96fbc4 0%, #f9f586 100%)',
+  'linear-gradient(135deg, #0046FF 0%, #73C8D2 100%)',
+  'linear-gradient(135deg, #FF9013 0%, #F5F1DC 100%)',
+  'linear-gradient(135deg, #73C8D2 0%, #0046FF 100%)',
+  'linear-gradient(135deg, #F5F1DC 0%, #73C8D2 100%)',
+  'linear-gradient(135deg, #0046FF 0%, #FF9013 100%)',
+  'linear-gradient(135deg, #73C8D2 0%, #FF9013 100%)',
 ];
 
 const MOCK_DIARIES = [
@@ -119,11 +119,11 @@ function TodayCard({ onClick }: { onClick: () => void }) {
       onClick={onClick}
       className="cursor-pointer transition-transform"
       style={{
-        border: '2px dashed rgba(59, 130, 246, 0.4)',
+        border: '2px dashed rgba(0, 70, 255, 0.3)',
         borderRadius: 20,
         padding: '32px 24px',
         textAlign: 'center',
-        background: 'linear-gradient(135deg, rgba(59,130,246,0.03) 0%, rgba(147,51,234,0.03) 100%)',
+        background: 'linear-gradient(135deg, rgba(0,70,255,0.04) 0%, rgba(115,200,210,0.04) 100%)',
         animation: 'pulse-border 3s ease-in-out infinite',
       }}
     >
@@ -132,7 +132,7 @@ function TodayCard({ onClick }: { onClick: () => void }) {
         How was your day today?
       </div>
       <div className="text-[13px] text-gray-400 mb-4">{formatted}</div>
-      <div className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-blue-500 text-white text-sm font-medium">
+      <div className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl text-sm font-medium" style={{ background: '#0046FF', color: 'white' }}>
         Start Writing
       </div>
     </div>
@@ -253,12 +253,12 @@ export default function DayFlowFeed() {
 
   return (
     <>
-      <div className="max-w-[393px] mx-auto min-h-dvh relative" style={{ background: '#fafaf9' }}>
+      <div className="max-w-[393px] mx-auto min-h-dvh relative" style={{ background: '#ffffff' }}>
         {/* Header */}
         <div
           className="px-5 pb-3 flex justify-between items-center sticky top-0 z-10"
           style={{
-            background: 'rgba(250,250,249,0.85)',
+            background: 'rgba(255,255,255,0.85)',
             backdropFilter: 'blur(12px)',
             paddingTop: 'calc(12px + var(--safe-top))',
           }}
@@ -298,7 +298,7 @@ export default function DayFlowFeed() {
           style={{
             padding: '40px 16px 0',
             paddingBottom: 'calc(12px + var(--safe-bottom))',
-            background: 'linear-gradient(to top, rgba(250,250,249,1) 60%, rgba(250,250,249,0))',
+            background: 'linear-gradient(to top, rgba(255,255,255,1) 60%, rgba(255,255,255,0))',
           }}
         >
           <div className="bg-white rounded-2xl px-5 py-3 flex justify-between items-center shadow-md pointer-events-auto cursor-pointer">
@@ -309,7 +309,7 @@ export default function DayFlowFeed() {
               </div>
             </div>
             <div className="flex gap-0.5">
-              {['#3b82f6', '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6'].map(
+              {['#0046FF', '#73C8D2', '#FF9013', '#0046FF', '#73C8D2', '#FF9013', '#0046FF'].map(
                 (c, i) => (
                   <div
                     key={i}
@@ -366,27 +366,27 @@ export default function DayFlowFeed() {
             </div>
 
             {/* Diary Text */}
-            <div className="text-sm leading-relaxed text-gray-600 mb-4 p-4 bg-[#fafaf9] rounded-xl whitespace-pre-line">
+            <div className="text-sm leading-relaxed text-gray-600 mb-4 p-4 bg-[#FAFAF8] rounded-xl whitespace-pre-line">
               {selectedDiary.diaryText || `${selectedDiary.preview} It was one of those days where everything just flows naturally. The kind of day you want to remember.`}
             </div>
 
             {/* Spending */}
-            <div className="flex justify-between items-center p-3 px-4 bg-green-50 rounded-xl mb-3">
-              <span className="text-[13px] text-green-800">Total Spending</span>
-              <span className="text-lg font-bold text-green-800">
+            <div className="flex justify-between items-center p-3 px-4 rounded-xl mb-3" style={{ background: '#FFF3E0' }}>
+              <span className="text-[13px]" style={{ color: '#FF9013' }}>Total Spending</span>
+              <span className="text-lg font-bold" style={{ color: '#FF9013' }}>
                 ${selectedDiary.total.toFixed(2)}
               </span>
             </div>
 
             {/* Spending Insight */}
             {selectedDiary.spendingInsight && (
-              <div className="p-3 px-4 bg-green-50 rounded-xl text-[13px] text-green-800 mb-3">
+              <div className="p-3 px-4 rounded-xl text-[13px] mb-3" style={{ background: '#FFF3E0', color: '#FF9013' }}>
                 💰 {selectedDiary.spendingInsight}
               </div>
             )}
 
             {/* Tomorrow Tip */}
-            <div className="p-3 px-4 bg-blue-50 rounded-xl text-[13px] text-blue-800">
+            <div className="p-3 px-4 rounded-xl text-[13px]" style={{ background: '#F5F1DC', color: '#0046FF' }}>
               💡 {selectedDiary.tomorrowSuggestion || "Tomorrow's tip: Try making coffee at home — save $4.50 and enjoy the ritual!"}
             </div>
           </div>

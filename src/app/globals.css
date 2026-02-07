@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 :root {
-  --background: #fafaf9;
+  --background: #ffffff;
   --foreground: #1a1a1a;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -31,8 +31,8 @@ body {
 }
 
 @keyframes pulse-border {
-  0%, 100% { border-color: rgba(59, 130, 246, 0.3); }
-  50% { border-color: rgba(59, 130, 246, 0.6); }
+  0%, 100% { border-color: rgba(0, 70, 255, 0.3); }
+  50% { border-color: rgba(0, 70, 255, 0.6); }
 }
 
 @keyframes slide-up {
