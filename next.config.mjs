@@ -55,9 +55,6 @@ const nextConfig = {
     ]
   },
 
-  // Optimize production builds
-  swcMinify: true,
-
   // Disable x-powered-by header
   poweredByHeader: false,
 };
