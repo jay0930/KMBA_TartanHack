@@ -1,8 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import EmojiTimeline from '@/components/EmojiTimeline';
+
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+
+const GRADIENTS = [
+  'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+  'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+  'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)',
+  'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)',
+  'linear-gradient(135deg, #89f7fe 0%, #66a6ff 100%)',
+  'linear-gradient(135deg, #96fbc4 0%, #f9f586 100%)',
+];
 
 const MOCK_DIARIES = [
   {
@@ -90,6 +101,9 @@ interface MockDiary {
   photoUrl?: string;
   photoGradient: string;
   primaryEmoji: string;
+  diaryText?: string;
+  spendingInsight?: string;
+  tomorrowSuggestion?: string;
 }
 
 function TodayCard({ onClick }: { onClick: () => void }) {
@@ -188,6 +202,54 @@ function DiaryCard({
 export default function DayFlowFeed() {
   const router = useRouter();
   const [selectedDiary, setSelectedDiary] = useState<MockDiary | null>(null);
+  const [diaries, setDiaries] = useState<MockDiary[]>(MOCK_DIARIES);
+  const [weeklyTotal, setWeeklyTotal] = useState(121.75);
+
+  useEffect(() => {
+    fetch(`${BACKEND_URL}/api/diary/history?limit=30`)
+      .then(res => res.json())
+      .then((data: Array<{
+        id: string;
+        date: string;
+        diary_text?: string;
+        diary_preview?: string;
+        total_spending?: number;
+        primary_emoji?: string;
+        photo_url?: string;
+        spending_insight?: string;
+        tomorrow_suggestion?: string;
+      }>) => {
+        if (data && data.length > 0) {
+          const mapped: MockDiary[] = data.map((d, i) => {
+            const dateObj = new Date(d.date + 'T12:00:00');
+            const formatted = dateObj.toLocaleDateString('en-US', {
+              weekday: 'long', month: 'short', day: 'numeric',
+            });
+            return {
+              id: d.id,
+              date: formatted,
+              emojis: [d.primary_emoji || '📝'],
+              times: [],
+              preview: d.diary_preview || d.diary_text?.slice(0, 100) || 'No preview available',
+              total: d.total_spending || 0,
+              hasPhoto: !!d.photo_url,
+              photoUrl: d.photo_url,
+              photoGradient: GRADIENTS[i % GRADIENTS.length],
+              primaryEmoji: d.primary_emoji || '📝',
+              diaryText: d.diary_text,
+              spendingInsight: d.spending_insight,
+              tomorrowSuggestion: d.tomorrow_suggestion,
+            };
+          });
+          setDiaries(mapped);
+          const total = mapped.reduce((s, d) => s + d.total, 0);
+          setWeeklyTotal(total);
+        }
+      })
+      .catch(() => {
+        // Keep mock data on error
+      });
+  }, []);
 
   return (
     <>
@@ -220,7 +282,7 @@ export default function DayFlowFeed() {
           </div>
 
           {/* Past diary cards */}
-          {MOCK_DIARIES.map((diary, i) => (
+          {diaries.map((diary, i) => (
             <div
               key={diary.id}
               style={{ animation: `fade-in-up 0.5s ease-out ${0.1 * (i + 1)}s both` }}
@@ -243,7 +305,7 @@ export default function DayFlowFeed() {
             <div>
               <div className="text-xs text-gray-400">This week</div>
               <div className="text-lg font-bold text-[#1a1a1a] font-[family-name:var(--font-outfit)]">
-                $121.75
+                ${weeklyTotal.toFixed(2)}
               </div>
             </div>
             <div className="flex gap-0.5">
@@ -304,9 +366,8 @@ export default function DayFlowFeed() {
             </div>
 
             {/* Diary Text */}
-            <div className="text-sm leading-relaxed text-gray-600 mb-4 p-4 bg-[#fafaf9] rounded-xl">
-              {selectedDiary.preview} It was one of those days where everything just flows
-              naturally. The kind of day you want to remember.
+            <div className="text-sm leading-relaxed text-gray-600 mb-4 p-4 bg-[#fafaf9] rounded-xl whitespace-pre-line">
+              {selectedDiary.diaryText || `${selectedDiary.preview} It was one of those days where everything just flows naturally. The kind of day you want to remember.`}
             </div>
 
             {/* Spending */}
@@ -317,9 +378,16 @@ export default function DayFlowFeed() {
               </span>
             </div>
 
+            {/* Spending Insight */}
+            {selectedDiary.spendingInsight && (
+              <div className="p-3 px-4 bg-green-50 rounded-xl text-[13px] text-green-800 mb-3">
+                💰 {selectedDiary.spendingInsight}
+              </div>
+            )}
+
             {/* Tomorrow Tip */}
             <div className="p-3 px-4 bg-blue-50 rounded-xl text-[13px] text-blue-800">
-              💡 Tomorrow&apos;s tip: Try making coffee at home — save $4.50 and enjoy the ritual!
+              💡 {selectedDiary.tomorrowSuggestion || "Tomorrow's tip: Try making coffee at home — save $4.50 and enjoy the ritual!"}
             </div>
           </div>
         </div>

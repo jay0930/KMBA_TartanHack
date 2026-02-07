@@ -607,8 +607,11 @@ function TimelineSpendingStep({
 }
 
 // ─── STEP 4: DIARY RESULT ───
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+
 function DiaryResult({ events, onDone }: { events: TimelineEvent[]; onDone: () => void }) {
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [diary, setDiary] = useState<{
     text: string;
     insight: string;
@@ -634,6 +637,41 @@ function DiaryResult({ events, onDone }: { events: TimelineEvent[]; onDone: () =
     }, 3000);
     return () => clearTimeout(timer);
   }, [events]);
+
+  const handleSave = async () => {
+    if (!diary || saving) return;
+    setSaving(true);
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const payload = {
+        date: today,
+        diary: {
+          diary_text: diary.text,
+          spending_insight: diary.insight,
+          tomorrow_suggestion: diary.tip,
+          total_spending: Math.round(diary.total),
+          diary_preview: diary.text.slice(0, 100),
+          primary_emoji: events[0]?.emoji || '📝',
+          timeline: events.map(e => ({
+            time: e.time,
+            emoji: e.emoji,
+            title: e.title,
+            spending: Math.round((e.spending || 0)),
+            source: e.source || 'calendar',
+          })),
+        },
+      };
+      await fetch(`${BACKEND_URL}/api/diary/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      onDone();
+    } catch (err) {
+      console.error('Failed to save diary:', err);
+      onDone();
+    }
+  };
 
   if (loading) {
     return (
@@ -730,15 +768,17 @@ function DiaryResult({ events, onDone }: { events: TimelineEvent[]; onDone: () =
       </div>
 
       <button
-        onClick={onDone}
+        onClick={handleSave}
+        disabled={saving}
         style={{
           width: '100%', padding: '16px',
-          background: 'linear-gradient(135deg, #3b82f6, #6366f1)',
+          background: saving ? '#94a3b8' : 'linear-gradient(135deg, #3b82f6, #6366f1)',
           color: 'white', border: 'none', borderRadius: 14,
-          fontSize: 16, fontWeight: 600, cursor: 'pointer',
+          fontSize: 16, fontWeight: 600, cursor: saving ? 'default' : 'pointer',
+          transition: 'background 0.2s',
         }}
       >
-        Save Diary ✓
+        {saving ? 'Saving...' : 'Save Diary ✓'}
       </button>
     </div>
   );
