@@ -21,6 +21,8 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [userId, setUserId] = useState<string>('');
+  const [showClearPopup, setShowClearPopup] = useState(false);
+  const [showLogoutPopup, setShowLogoutPopup] = useState(false);
   const [profile, setProfile] = useState<ProfileData>({
     name: '',
     gender: '',
@@ -215,17 +217,25 @@ export default function ProfilePage() {
               Gender
             </label>
             {editing ? (
-              <select
-                value={profile.gender}
-                onChange={(e) => setProfile(prev => ({ ...prev, gender: e.target.value }))}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#0046FF] transition-colors"
-              >
-                <option value="">Select gender</option>
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-                <option value="Other">Other</option>
-                <option value="Prefer not to say">Prefer not to say</option>
-              </select>
+              <div className="relative">
+                <select
+                  value={profile.gender}
+                  onChange={(e) => setProfile(prev => ({ ...prev, gender: e.target.value }))}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#0046FF] transition-colors appearance-none bg-white"
+                  style={{ paddingRight: '40px' }}
+                >
+                  <option value="">Select gender</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Other">Other</option>
+                  <option value="Prefer not to say">Prefer not to say</option>
+                </select>
+                <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400">
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <path d="M3 5L6 8L9 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+              </div>
             ) : (
               <div className="px-4 py-3 bg-gray-50 rounded-xl text-sm text-gray-800">
                 {profile.gender || 'Not set'}
@@ -285,55 +295,120 @@ export default function ProfilePage() {
         {/* Clear Profile & Logout Buttons */}
         <div className="mt-8 pt-6 border-t border-gray-100 flex flex-col gap-3">
           <button
-            onClick={async () => {
-              if (confirm('Are you sure you want to clear all profile data?')) {
-                try {
-                  // Clear profile in DB
-                  await fetch(`${BACKEND_URL}/api/user?user_id=${userId}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      name: null,
-                      gender: null,
-                      age: null,
-                      calendar_url: null,
-                      photo_url: null,
-                    }),
-                  });
-
-                  // Clear localStorage
-                  localStorage.removeItem('dayflow_calendar_url');
-
-                  // Reset state
-                  setProfile({
-                    name: '',
-                    gender: '',
-                    age: '',
-                    calendar_url: '',
-                    photo_url: '',
-                  });
-                } catch (err) {
-                  console.error('Failed to clear profile:', err);
-                  alert('Failed to clear profile data.');
-                }
-              }
-            }}
+            onClick={() => setShowClearPopup(true)}
             className="w-full py-3 bg-red-500 text-white text-sm font-semibold hover:bg-red-600 rounded-xl transition-colors"
           >
             Clear Profile Data
           </button>
 
           <button
-            onClick={async () => {
-              await supabase.auth.signOut();
-              router.replace('/login');
-            }}
+            onClick={() => setShowLogoutPopup(true)}
             className="w-full py-3 bg-gray-100 text-gray-700 text-sm font-semibold hover:bg-gray-200 rounded-xl transition-colors"
           >
             Logout
           </button>
         </div>
       </div>
+
+      {/* Clear Profile Confirmation Popup */}
+      {showClearPopup && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: 'rgba(0, 0, 0, 0.5)' }}
+          onClick={() => setShowClearPopup(false)}
+        >
+          <div
+            className="bg-white rounded-2xl p-6 mx-4 max-w-sm w-full shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-lg font-bold text-gray-900 mb-2">Clear Profile Data?</div>
+            <div className="text-sm text-gray-600 mb-6">
+              This will remove all your profile information including name, age, gender, calendar URL, and photo. This action cannot be undone.
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowClearPopup(false)}
+                className="flex-1 py-3 bg-gray-100 text-gray-700 text-sm font-semibold hover:bg-gray-200 rounded-xl transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    // Clear profile in DB
+                    await fetch(`${BACKEND_URL}/api/user?user_id=${userId}`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        name: null,
+                        gender: null,
+                        age: null,
+                        calendar_url: null,
+                        photo_url: null,
+                      }),
+                    });
+
+                    // Clear localStorage
+                    localStorage.removeItem('dayflow_calendar_url');
+
+                    // Reset state
+                    setProfile({
+                      name: '',
+                      gender: '',
+                      age: '',
+                      calendar_url: '',
+                      photo_url: '',
+                    });
+                    setShowClearPopup(false);
+                  } catch (err) {
+                    console.error('Failed to clear profile:', err);
+                    alert('Failed to clear profile data.');
+                  }
+                }}
+                className="flex-1 py-3 bg-red-500 text-white text-sm font-semibold hover:bg-red-600 rounded-xl transition-colors"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Logout Confirmation Popup */}
+      {showLogoutPopup && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: 'rgba(0, 0, 0, 0.5)' }}
+          onClick={() => setShowLogoutPopup(false)}
+        >
+          <div
+            className="bg-white rounded-2xl p-6 mx-4 max-w-sm w-full shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-lg font-bold text-gray-900 mb-2">Logout?</div>
+            <div className="text-sm text-gray-600 mb-6">
+              Are you sure you want to logout? You&apos;ll need to sign in again to access your diary.
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowLogoutPopup(false)}
+                className="flex-1 py-3 bg-gray-100 text-gray-700 text-sm font-semibold hover:bg-gray-200 rounded-xl transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  await supabase.auth.signOut();
+                  router.replace('/login');
+                }}
+                className="flex-1 py-3 bg-[#0046FF] text-white text-sm font-semibold hover:bg-[#0041E6] rounded-xl transition-colors"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

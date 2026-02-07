@@ -1,0 +1,31 @@
+# Vercel ignore file - exclude from deployment
+
+# Backend files (deployed separately on Railway)
+dayflow/
+
+# Development files
+*.log
+*.md
+!README.md
+!DEPLOYMENT.md
+
+# Test files
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+
+# Documentation
+docs/
+
+# Local env files (use Vercel dashboard for env vars)
+.env.local
+.env*.local
+
+# IDE
+.vscode/
+.idea/
+
+# Git
+.git/
+.github/

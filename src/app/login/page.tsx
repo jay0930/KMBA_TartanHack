@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
 
 export default function LoginPage() {
@@ -41,7 +42,17 @@ export default function LoginPage() {
   return (
     <div className="max-w-[393px] mx-auto min-h-dvh flex flex-col justify-center" style={{ background: '#ffffff', padding: '0 24px' }}>
       <div className="text-center mb-10">
-        <div className="text-4xl mb-3">📖</div>
+        <div className="flex justify-center mb-4">
+          <Image
+            src="/images/DayFlow_popicon/apple-icon-144x144.png"
+            alt="DayFlow Logo"
+            width={144}
+            height={144}
+            priority
+            className="w-auto h-auto"
+            style={{ maxWidth: '180px' }}
+          />
+        </div>
         <h1 className="text-2xl font-bold text-[#1a1a1a] font-[family-name:var(--font-outfit)]">
           DayFlow
         </h1>

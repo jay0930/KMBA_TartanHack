@@ -290,23 +290,36 @@ async def delete_timeline_event(event_id: str):
 @app.post("/api/diary/save")
 async def save_diary(body: SaveDiaryRequest):
     """Save a complete diary + timeline events to Supabase."""
-    diary_fields = body.diary.model_dump(exclude={"timeline"})
-    # Round spending to int for Supabase integer columns
-    if "total_spending" in diary_fields:
-        diary_fields["total_spending"] = round(diary_fields["total_spending"])
-    if body.user_id:
-        diary_fields["user_id"] = body.user_id
-    diary_row = await db_save_diary(body.date, diary_fields)
+    try:
+        print(f"[DEBUG] Saving diary for date: {body.date}, user_id: {body.user_id}")
 
-    events = []
-    if body.diary.timeline:
-        event_dicts = [e.model_dump() for e in body.diary.timeline]
-        for ed in event_dicts:
-            if "spending" in ed:
-                ed["spending"] = round(ed["spending"])
-        events = await save_timeline_events(diary_row["id"], event_dicts)
+        diary_fields = body.diary.model_dump(exclude={"timeline"})
+        # Round spending to int for Supabase integer columns
+        if "total_spending" in diary_fields:
+            diary_fields["total_spending"] = round(diary_fields["total_spending"])
+        if body.user_id:
+            diary_fields["user_id"] = body.user_id
 
-    return {**diary_row, "timeline_events": events}
+        print(f"[DEBUG] Diary fields: {diary_fields}")
+        diary_row = await db_save_diary(body.date, diary_fields)
+        print(f"[DEBUG] Diary saved with ID: {diary_row.get('id')}")
+
+        events = []
+        if body.diary.timeline:
+            event_dicts = [e.model_dump() for e in body.diary.timeline]
+            for ed in event_dicts:
+                if "spending" in ed:
+                    ed["spending"] = round(ed["spending"])
+            print(f"[DEBUG] Saving {len(event_dicts)} timeline events")
+            events = await save_timeline_events(diary_row["id"], event_dicts)
+            print(f"[DEBUG] Timeline events saved: {len(events)}")
+
+        return {**diary_row, "timeline_events": events}
+    except Exception as e:
+        print(f"[ERROR] Failed to save diary: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to save diary: {str(e)}")
 
 
 @app.post("/api/diary/thumb")
@@ -456,6 +469,11 @@ async def fetch_calendar(
     # Extract calendar ID from URL if needed
     cal_id_raw = calendar_id or DEFAULT_CALENDAR_ID
     cal_id = _extract_calendar_id(cal_id_raw)
+
+    # Debug logging
+    print(f"[DEBUG] Calendar ID extraction:")
+    print(f"  Raw input: {cal_id_raw[:100]}..." if len(cal_id_raw) > 100 else f"  Raw input: {cal_id_raw}")
+    print(f"  Extracted: {cal_id[:100]}..." if len(cal_id) > 100 else f"  Extracted: {cal_id}")
 
     # Fetch events from Google Calendar API
     service = google_build("calendar", "v3", credentials=_google_credentials)

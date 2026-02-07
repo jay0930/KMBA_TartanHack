@@ -1,0 +1,10 @@
+# https://www.robotstxt.org/robotstxt.html
+User-agent: *
+Allow: /
+
+# Disallow private/auth pages
+Disallow: /login
+Disallow: /profile
+Disallow: /input
+
+Sitemap: https://dayflow.app/sitemap.xml

@@ -31,7 +31,6 @@ function StepBar({ current, steps }: { current: number; steps: string[] }) {
 function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) => void; userId: string }) {
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [loadingProfile, setLoadingProfile] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [checked, setChecked] = useState<Set<number>>(new Set());
@@ -54,24 +53,18 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
     return '';
   };
 
-  // Load saved calendar URL from user profile and auto-fetch if available
+  // Load calendar URL from profile and handle OAuth redirect
   useEffect(() => {
     const init = async () => {
+      // Load saved calendar URL from profile
       try {
         const res = await fetch(`${BACKEND_URL}/api/user?user_id=${userId}`);
         const data = await res.json();
         if (data.calendar_url) {
-          // Auto-fetch calendar events if URL is saved in profile
           setCalendarUrl(data.calendar_url);
-          const calId = extractCalendarId(data.calendar_url);
-          if (calId) {
-            await fetchCalendarEvents(calId);
-          }
         }
       } catch {
         // ignore
-      } finally {
-        setLoadingProfile(false);
       }
 
       // After OAuth redirect, auto-fetch calendar events
@@ -132,10 +125,9 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
       const statusRes = await fetch(`${BACKEND_URL}/api/auth/google/status`);
       const status = await statusRes.json();
       if (status.connected) {
-        // Already connected — fetch events with calendar ID
-        // Save calendar URL to user profile in DB
-        if (calendarUrl) {
-          fetch(`${BACKEND_URL}/api/user?user_id=${userId}`, {
+        // Already connected — save URL to profile and fetch events
+        if (calId) {
+          await fetch(`${BACKEND_URL}/api/user?user_id=${userId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ calendar_url: calendarUrl }),
@@ -146,10 +138,9 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
       }
       // Not connected — redirect to Google OAuth
       // Save calendar ID to localStorage so we can use it after redirect
-      if (calId) localStorage.setItem('dayflow_calendar_id', calId);
-      // Save calendar URL to user profile in DB
-      if (calendarUrl) {
-        fetch(`${BACKEND_URL}/api/user?user_id=${userId}`, {
+      if (calId) {
+        localStorage.setItem('dayflow_calendar_id', calId);
+        await fetch(`${BACKEND_URL}/api/user?user_id=${userId}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ calendar_url: calendarUrl }),
@@ -249,61 +240,100 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
       ) : !connected ? (
         <div>
           {!showUrlInput ? (
-            <div
-              onClick={() => setShowUrlInput(true)}
-              className="hover:border-[#73C8D2]"
-              style={{
-                border: '2px dashed #d1d5db',
-                borderRadius: 16,
-                padding: '40px 24px',
-                textAlign: 'center',
-                cursor: 'pointer',
-                background: '#fafafa',
-                transition: 'all 0.2s',
-              }}
-            >
-              <div style={{ fontSize: 32, marginBottom: 12 }}>📅</div>
-              <div style={{ fontSize: 16, fontWeight: 600, color: '#333', marginBottom: 4 }}>Connect Google Calendar</div>
-              <div style={{ fontSize: 13, color: '#999' }}>We&apos;ll pull today&apos;s events</div>
-            </div>
-          ) : (
-            <div style={{
-              border: '1px solid #e5e7eb', borderRadius: 16,
-              padding: '24px', background: '#fafafa',
-            }}>
-              <div style={{ fontSize: 15, fontWeight: 600, color: '#333', marginBottom: 12 }}>
-                Paste your Google Calendar URL
-              </div>
-              <div style={{ fontSize: 12, color: '#999', marginBottom: 12 }}>
-                Google Calendar &rarr; Settings &rarr; Calendar ID, or share embed link
-              </div>
-              <input
-                value={calendarUrl}
-                onChange={(e) => setCalendarUrl(e.target.value)}
-                placeholder="https://calendar.google.com/calendar/embed?src=..."
-                onKeyDown={(e) => e.key === 'Enter' && handleConnect()}
+            <>
+              <div
+                onClick={() => setShowUrlInput(true)}
+                className="hover:border-[#73C8D2]"
                 style={{
-                  width: '100%', padding: '12px 14px', fontSize: 13,
-                  border: '1px solid #d1d5db', borderRadius: 10,
-                  outline: 'none', background: 'white',
-                  marginBottom: 12, boxSizing: 'border-box',
-                }}
-              />
-              <button
-                onClick={handleConnect}
-                disabled={!calendarUrl.trim()}
-                style={{
-                  width: '100%', padding: '12px',
-                  background: calendarUrl.trim() ? '#0046FF' : '#d1d5db',
-                  color: 'white', border: 'none', borderRadius: 10,
-                  fontSize: 14, fontWeight: 600,
-                  cursor: calendarUrl.trim() ? 'pointer' : 'default',
-                  transition: 'background 0.15s',
+                  border: '2px dashed #d1d5db',
+                  borderRadius: 16,
+                  padding: '40px 24px',
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  background: '#fafafa',
+                  transition: 'all 0.2s',
+                  marginBottom: 16,
                 }}
               >
-                Connect
-              </button>
-            </div>
+                <div style={{ fontSize: 32, marginBottom: 12 }}>📅</div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: '#333', marginBottom: 4 }}>Connect Google Calendar</div>
+                <div style={{ fontSize: 13, color: '#999' }}>We&apos;ll pull today&apos;s events</div>
+              </div>
+              <div
+                onClick={() => {
+                  setEvents([]);
+                  setChecked(new Set());
+                  setConnected(true);
+                }}
+                style={{
+                  textAlign: 'center',
+                  padding: '12px',
+                  fontSize: 14,
+                  color: '#666',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                }}
+              >
+                Skip & Add Manually
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{
+                border: '1px solid #e5e7eb', borderRadius: 16,
+                padding: '24px', background: '#fafafa',
+              }}>
+                <div style={{ fontSize: 15, fontWeight: 600, color: '#333', marginBottom: 12 }}>
+                  Paste your Google Calendar URL
+                </div>
+                <div style={{ fontSize: 12, color: '#999', marginBottom: 12 }}>
+                  Google Calendar &rarr; Settings &rarr; Calendar ID, or share embed link
+                </div>
+                <input
+                  value={calendarUrl}
+                  onChange={(e) => setCalendarUrl(e.target.value)}
+                  placeholder="https://calendar.google.com/calendar/embed?src=..."
+                  onKeyDown={(e) => e.key === 'Enter' && handleConnect()}
+                  style={{
+                    width: '100%', padding: '12px 14px', fontSize: 13,
+                    border: '1px solid #d1d5db', borderRadius: 10,
+                    outline: 'none', background: 'white',
+                    marginBottom: 12, boxSizing: 'border-box',
+                  }}
+                />
+                <button
+                  onClick={handleConnect}
+                  disabled={!calendarUrl.trim()}
+                  style={{
+                    width: '100%', padding: '12px',
+                    background: calendarUrl.trim() ? '#0046FF' : '#d1d5db',
+                    color: 'white', border: 'none', borderRadius: 10,
+                    fontSize: 14, fontWeight: 600,
+                    cursor: calendarUrl.trim() ? 'pointer' : 'default',
+                    transition: 'background 0.15s',
+                  }}
+                >
+                  Connect
+                </button>
+              </div>
+              <div
+                onClick={() => {
+                  setEvents([]);
+                  setChecked(new Set());
+                  setConnected(true);
+                }}
+                style={{
+                  textAlign: 'center',
+                  marginTop: 16,
+                  fontSize: 13,
+                  color: '#aaa',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                }}
+              >
+                Skip — I&apos;ll add events manually
+              </div>
+            </>
           )}
         </div>
       ) : (
@@ -355,11 +385,11 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
             );
           })}
 
-          {/* Add new event row */}
+          {/* Add new event */}
           <div style={{
             display: 'flex', flexDirection: 'column', gap: 8,
-            padding: '12px 14px', background: 'rgba(0, 70, 255, 0.05)', borderRadius: 12,
-            border: '1px dashed #0046FF', marginTop: 4,
+            padding: '12px 14px', background: 'rgba(0, 70, 255, 0.05)',
+            borderRadius: 12, border: '1px dashed #0046FF', marginTop: 4,
           }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: '#0046FF', marginBottom: 2 }}>
               + Add an event
@@ -402,10 +432,11 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
               <button
                 onClick={handleAddEvent}
                 style={{
-                  width: 64, flexShrink: 0,
-                  padding: '8px 0', background: newTitle.trim() && newTime.trim() ? '#0046FF' : '#d1d5db',
+                  width: 64, flexShrink: 0, padding: '8px 0',
+                  background: newTitle.trim() && newTime.trim() ? '#0046FF' : '#d1d5db',
                   color: 'white', border: 'none', borderRadius: 8,
-                  fontSize: 13, fontWeight: 600, cursor: newTitle.trim() && newTime.trim() ? 'pointer' : 'default',
+                  fontSize: 13, fontWeight: 600,
+                  cursor: newTitle.trim() && newTime.trim() ? 'pointer' : 'default',
                   transition: 'background 0.15s',
                 }}
               >
@@ -413,33 +444,22 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
               </button>
             </div>
           </div>
-        </div>
-      )}
 
-      {!connected && !loading && (
-        <div
-          onClick={() => onNext([])}
-          style={{ textAlign: 'center', marginTop: 16, fontSize: 13, color: '#aaa', cursor: 'pointer', textDecoration: 'underline' }}
-        >
-          Skip — I&apos;ll add events manually
+          <button
+            onClick={() => onNext(events.filter((_, i) => checked.has(i)))}
+            className="hover:opacity-90"
+            style={{
+              width: '100%', marginTop: 20, padding: '14px',
+              background: checkedCount > 0 ? '#0046FF' : '#94a3b8',
+              color: 'white', border: 'none', borderRadius: 14,
+              fontSize: 15, fontWeight: 600,
+              cursor: checkedCount > 0 ? 'pointer' : 'default',
+              transition: 'background 0.2s',
+            }}
+          >
+            Next — Add Photos ({checkedCount}) →
+          </button>
         </div>
-      )}
-
-      {connected && (
-        <button
-          onClick={() => onNext(events.filter((_, i) => checked.has(i)))}
-          className="hover:opacity-90"
-          style={{
-            width: '100%', marginTop: 20, padding: '14px',
-            background: checkedCount > 0 ? '#0046FF' : '#94a3b8',
-            color: 'white', border: 'none',
-            borderRadius: 14, fontSize: 15, fontWeight: 600,
-            cursor: checkedCount > 0 ? 'pointer' : 'default',
-            transition: 'background 0.2s',
-          }}
-        >
-          Next — Add Photos ({checkedCount}) →
-        </button>
       )}
     </div>
   );
@@ -735,7 +755,7 @@ function TimelineSpendingStep({
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [editValue, setEditValue] = useState('');
 
-  const hours = Array.from({ length: 17 }, (_, i) => i + 6);
+  const hours = Array.from({ length: 25 }, (_, i) => i);
   const total = events.reduce((s, e) => s + (e.spending || 0), 0);
 
   const handleSaveSpending = (idx: number) => {
@@ -765,14 +785,14 @@ function TimelineSpendingStep({
           display: 'flex', flexDirection: 'column',
         }}>
           {hours.map((h) => {
-            const topPct = ((h - 6) / 16) * 100;
+            const topPct = (h / 24) * 100;
             return (
               <div key={h} style={{
                 position: 'absolute', top: `${topPct}%`, left: 0, width: '100%',
                 display: 'flex', alignItems: 'center', transform: 'translateY(-50%)',
               }}>
                 <span style={{ fontSize: 10, color: '#bbb', width: 32, textAlign: 'right' }}>
-                  {h > 12 ? `${h - 12}pm` : h === 12 ? '12pm' : `${h}am`}
+                  {h === 0 ? '12am' : h > 12 ? `${h - 12}pm` : h === 12 ? '12pm' : `${h}am`}
                 </span>
                 <div style={{ width: 6, height: 1, background: '#ddd', marginLeft: 2 }} />
               </div>
@@ -796,7 +816,7 @@ function TimelineSpendingStep({
               const positions = events.map((event) => {
                 const hour = parseInt(event.time.split(':')[0]);
                 const min = parseInt(event.time.split(':')[1]) || 0;
-                return ((hour - 6 + min / 60) / 16) * (hours.length * 44);
+                return ((hour + min / 60) / 24) * (hours.length * 44);
               });
               // assign columns for overlapping cards
               const cols: number[] = new Array(events.length).fill(0);
@@ -1020,18 +1040,23 @@ function DiaryResult({ events, onDone, userId }: { events: TimelineEvent[]; onDo
           })),
         },
       };
+      console.log('[DEBUG] Saving diary with payload:', payload);
       const res = await fetch(`${BACKEND_URL}/api/diary/save`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
+        const errorData = await res.json().catch(() => ({}));
+        console.error('[ERROR] Diary save failed:', errorData);
+        throw new Error(errorData.detail || `HTTP ${res.status}`);
       }
+      const result = await res.json();
+      console.log('[DEBUG] Diary saved successfully:', result);
       onDone();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to save diary:', err);
-      alert('Failed to save diary. Please try again.');
+      alert(`Failed to save diary: ${err.message || 'Please try again.'}`);
     } finally {
       setSaving(false);
     }
