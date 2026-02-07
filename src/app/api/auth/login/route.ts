@@ -15,11 +15,11 @@ export async function POST(request: Request) {
     .single();
 
   if (!user) {
-    return NextResponse.json({ error: '이메일 또는 비밀번호가 틀립니다' }, { status: 401 });
+    return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
   }
 
   if (user.password_hash !== hashPassword(password)) {
-    return NextResponse.json({ error: '이메일 또는 비밀번호가 틀립니다' }, { status: 401 });
+    return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
   }
 
   const res = NextResponse.json({
