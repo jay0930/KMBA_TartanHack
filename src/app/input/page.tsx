@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import type { CalendarEvent, PhotoEvent, TimelineEvent } from '@/lib/types';
+import { supabase } from '@/lib/supabase';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001';
 
@@ -919,7 +920,7 @@ function TimelineSpendingStep({
 // ─── STEP 4: DIARY RESULT ───
 const DIARY_MAX_LENGTH = 1000;
 
-function DiaryResult({ events, onDone }: { events: TimelineEvent[]; onDone: () => void }) {
+function DiaryResult({ events, onDone, userId }: { events: TimelineEvent[]; onDone: () => void; userId: string }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editingDiary, setEditingDiary] = useState(false);
@@ -972,6 +973,7 @@ function DiaryResult({ events, onDone }: { events: TimelineEvent[]; onDone: () =
       const today = new Date().toISOString().split('T')[0];
       const payload = {
         date: today,
+        user_id: userId,
         diary: {
           diary_text: diary.text,
           spending_insight: diary.insight,
@@ -1156,8 +1158,29 @@ export default function DayFlowInput() {
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [photoEvents, setPhotoEvents] = useState<PhotoEvent[]>([]);
   const [finalTimeline, setFinalTimeline] = useState<TimelineEvent[]>([]);
+  const [userId, setUserId] = useState<string>('');
+  const [authReady, setAuthReady] = useState(false);
 
   const steps = ['Calendar', 'Photos', 'Timeline', 'Diary'];
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        router.replace('/login');
+        return;
+      }
+      setUserId(session.user.id);
+      setAuthReady(true);
+    });
+  }, [router]);
+
+  if (!authReady) {
+    return (
+      <div className="max-w-[393px] mx-auto min-h-dvh flex items-center justify-center" style={{ background: '#ffffff' }}>
+        <div className="text-gray-400 text-sm">Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-[393px] mx-auto min-h-dvh" style={{ background: '#ffffff' }}>
@@ -1213,6 +1236,7 @@ export default function DayFlowInput() {
         {step === 3 && (
           <DiaryResult
             events={finalTimeline}
+            userId={userId}
             onDone={() => {
               router.push('/?refresh=' + Date.now());
             }}

@@ -6,7 +6,7 @@ from supabase import create_client, Client
 load_dotenv()
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
-SUPABASE_KEY = os.environ["SUPABASE_ANON_KEY"]
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ["SUPABASE_ANON_KEY"]
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -44,23 +44,19 @@ async def test_connection() -> dict:
 
 # ── Diaries ─────────────────────────────────────────────────────────
 
-async def get_or_create_diary(date: str) -> dict:
-    """Return existing diary for a date, or create a draft one."""
-    result = (
-        supabase.table("diaries")
-        .select("*")
-        .eq("date", date)
-        .limit(1)
-        .execute()
-    )
+async def get_or_create_diary(date: str, user_id: str | None = None) -> dict:
+    """Return existing diary for a date (and user_id if given), or create a draft one."""
+    query = supabase.table("diaries").select("*").eq("date", date)
+    if user_id:
+        query = query.eq("user_id", user_id)
+    result = query.limit(1).execute()
     if result.data and len(result.data) > 0:
         return result.data[0]
 
-    result = (
-        supabase.table("diaries")
-        .insert({"date": date})
-        .execute()
-    )
+    row = {"date": date}
+    if user_id:
+        row["user_id"] = user_id
+    result = supabase.table("diaries").insert(row).execute()
     return result.data[0]
 
 
@@ -109,15 +105,15 @@ async def get_diary_by_id(diary_id: str) -> dict | None:
     return None
 
 
-async def get_diary_history(limit: int = 30) -> list:
+async def get_diary_history(limit: int = 30, user_id: str | None = None) -> list:
     """Fetch the most recent diary entries with their timeline events and photos (excluding soft-deleted)."""
-    result = (
+    query = (
         supabase.table("diaries")
         .select("*, timeline_events(id, time, emoji, title, spending, source, is_deleted), photos(url, extracted_time)")
-        .order("date", desc=True)
-        .limit(limit)
-        .execute()
     )
+    if user_id:
+        query = query.eq("user_id", user_id)
+    result = query.order("date", desc=True).limit(limit).execute()
     # Filter out soft-deleted timeline events and set primary photo
     for diary in result.data:
         if diary.get("timeline_events"):
@@ -385,12 +381,12 @@ async def save_thumb(diary_id: str, event_id: str) -> dict:
 
 # ── Users ────────────────────────────────────────────────────────────
 
-async def get_user(user_key: str = "default") -> dict | None:
-    """Fetch user profile by user_key. Returns None if not found."""
+async def get_user(user_id: str) -> dict | None:
+    """Fetch user profile by auth user_id (UUID)."""
     result = (
         supabase.table("users")
         .select("*")
-        .eq("user_key", user_key)
+        .eq("user_id", user_id)
         .limit(1)
         .execute()
     )
@@ -399,23 +395,20 @@ async def get_user(user_key: str = "default") -> dict | None:
     return None
 
 
-async def create_or_update_user(user_key: str, user_data: dict) -> dict:
-    """Create or update a user profile. Upserts by user_key."""
-    # First, try to get existing user
-    existing = await get_user(user_key)
+async def create_or_update_user(user_id: str, user_data: dict) -> dict:
+    """Create or update a user profile. Upserts by auth user_id."""
+    existing = await get_user(user_id)
 
     if existing:
-        # Update existing user
         row = {**user_data}
         result = (
             supabase.table("users")
             .update(row)
-            .eq("user_key", user_key)
+            .eq("user_id", user_id)
             .execute()
         )
         return result.data[0]
     else:
-        # Create new user
-        row = {"user_key": user_key, **user_data}
+        row = {"user_id": user_id, **user_data}
         result = supabase.table("users").insert(row).execute()
         return result.data[0]

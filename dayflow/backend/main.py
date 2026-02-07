@@ -96,11 +96,11 @@ def _get_google_flow() -> Flow:
                 "client_secret": client_secret,
                 "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                 "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": [f"http://localhost:8000/api/auth/google/callback"],
+                "redirect_uris": [f"{BACKEND_URL}/api/auth/google/callback"],
             }
         },
         scopes=GOOGLE_SCOPES,
-        redirect_uri="http://localhost:8000/api/auth/google/callback",
+        redirect_uri=f"{BACKEND_URL}/api/auth/google/callback",
     )
 
 
@@ -131,6 +131,7 @@ class DiaryOutput(BaseModel):
 class SaveDiaryRequest(BaseModel):
     diary: DiaryOutput
     date: str
+    user_id: str | None = None
 
 
 class UpdateSpendingRequest(BaseModel):
@@ -239,6 +240,8 @@ async def save_diary(body: SaveDiaryRequest):
     # Round spending to int for Supabase integer columns
     if "total_spending" in diary_fields:
         diary_fields["total_spending"] = round(diary_fields["total_spending"])
+    if body.user_id:
+        diary_fields["user_id"] = body.user_id
     diary_row = await db_save_diary(body.date, diary_fields)
 
     events = []
@@ -260,15 +263,18 @@ async def thumb(body: ThumbRequest):
 
 
 @app.get("/api/diary/history")
-async def diary_history(limit: int = Query(default=30, ge=1, le=100)):
+async def diary_history(
+    limit: int = Query(default=30, ge=1, le=100),
+    user_id: str = Query(default=""),
+):
     """Return past diaries ordered by date desc, with timeline events."""
-    return await db_get_diary_history(limit)
+    return await db_get_diary_history(limit, user_id=user_id or None)
 
 
 @app.get("/api/diary/draft")
-async def get_or_create_draft(date: str = Query(...)):
+async def get_or_create_draft(date: str = Query(...), user_id: str = Query(default="")):
     """Get or create a draft diary for a given date. Returns diary_id."""
-    diary = await get_or_create_diary(date)
+    diary = await get_or_create_diary(date, user_id=user_id or None)
     return diary
 
 
@@ -707,13 +713,12 @@ async def analyze_photos(files: list[UploadFile] = File(...)):
 # ── User Profile ─────────────────────────────────────────────────────
 
 @app.get("/api/user")
-async def get_user_profile(user_id: str = Query(default="default")):
-    """Get user profile by user_id. Returns default profile if not found."""
+async def get_user_profile(user_id: str = Query(...)):
+    """Get user profile by auth user_id (UUID)."""
     user = await db_get_user(user_id)
     if not user:
-        # Return empty profile if user doesn't exist yet
         return {
-            "id": user_id,
+            "user_id": user_id,
             "name": None,
             "gender": None,
             "age": None,
@@ -724,8 +729,8 @@ async def get_user_profile(user_id: str = Query(default="default")):
 
 
 @app.post("/api/user")
-async def update_user_profile(profile: UserProfile, user_id: str = Query(default="default")):
-    """Create or update user profile."""
+async def update_user_profile(profile: UserProfile, user_id: str = Query(...)):
+    """Create or update user profile by auth user_id."""
     user_data = profile.model_dump(exclude_none=False)
     result = await db_create_or_update_user(user_id, user_data)
     return result

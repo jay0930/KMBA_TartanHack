@@ -1,10 +1,10 @@
 -- Drop table if it exists (to start fresh)
 DROP TABLE IF EXISTS users CASCADE;
 
--- Create users table for user profiles
+-- Create users table for user profiles (linked to auth.users)
 CREATE TABLE users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_key TEXT UNIQUE NOT NULL DEFAULT 'default',
+  user_id UUID UNIQUE NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   name TEXT,
   gender TEXT,
   age INTEGER,
@@ -14,8 +14,8 @@ CREATE TABLE users (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Create index on user_key for fast lookups
-CREATE INDEX idx_users_user_key ON users(user_key);
+-- Create index on user_id for fast lookups
+CREATE INDEX idx_users_user_id ON users(user_id);
 
 -- Create a trigger to automatically update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -31,15 +31,10 @@ BEFORE UPDATE ON users
 FOR EACH ROW
 EXECUTE FUNCTION update_updated_at_column();
 
--- Insert default user
-INSERT INTO users (user_key, name, gender, age, calendar_url, photo_url)
-VALUES ('default', NULL, NULL, NULL, NULL, NULL)
-ON CONFLICT (user_key) DO NOTHING;
-
 -- Add helpful comments
-COMMENT ON TABLE users IS 'User profile information';
-COMMENT ON COLUMN users.id IS 'User UUID (auto-generated)';
-COMMENT ON COLUMN users.user_key IS 'User lookup key (default: "default" for single-user setup)';
+COMMENT ON TABLE users IS 'User profile information linked to auth.users';
+COMMENT ON COLUMN users.id IS 'Row UUID (auto-generated)';
+COMMENT ON COLUMN users.user_id IS 'Auth user UUID from auth.users(id)';
 COMMENT ON COLUMN users.name IS 'User full name';
 COMMENT ON COLUMN users.gender IS 'User gender (Male/Female/Other/Prefer not to say)';
 COMMENT ON COLUMN users.age IS 'User age in years';

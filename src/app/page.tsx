@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import EmojiTimeline from '@/components/EmojiTimeline';
+import { supabase } from '@/lib/supabase';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001';
 
@@ -222,60 +223,85 @@ export default function DayFlowFeed() {
   const [weeklyTotal, setWeeklyTotal] = useState(121.75);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [userName, setUserName] = useState<string>('');
+  const [authReady, setAuthReady] = useState(false);
 
   useEffect(() => {
-    fetch(`${BACKEND_URL}/api/diary/history?limit=30`)
-      .then(res => res.json())
-      .then((data: Array<{
-        id: string;
-        date: string;
-        diary_text?: string;
-        diary_preview?: string;
-        total_spending?: number;
-        primary_emoji?: string;
-        photo_url?: string;
-        spending_insight?: string;
-        tomorrow_suggestion?: string;
-        timeline_events?: Array<{ emoji?: string; time?: string }>;
-      }>) => {
-        if (data && data.length > 0) {
-          const mapped: MockDiary[] = data.map((d, i) => {
-            const dateObj = new Date(d.date + 'T12:00:00');
-            const formatted = dateObj.toLocaleDateString('en-US', {
-              weekday: 'long', month: 'short', day: 'numeric',
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        router.replace('/login');
+        return;
+      }
+      const email = session.user.email || '';
+      setUserName(email.split('@')[0]);
+      setAuthReady(true);
+
+      const userId = session.user.id;
+      fetch(`${BACKEND_URL}/api/diary/history?limit=30&user_id=${userId}`)
+        .then(res => res.json())
+        .then((data: Array<{
+          id: string;
+          date: string;
+          diary_text?: string;
+          diary_preview?: string;
+          total_spending?: number;
+          primary_emoji?: string;
+          photo_url?: string;
+          spending_insight?: string;
+          tomorrow_suggestion?: string;
+          timeline_events?: Array<{ emoji?: string; time?: string }>;
+        }>) => {
+          if (data && data.length > 0) {
+            const mapped: MockDiary[] = data.map((d, i) => {
+              const dateObj = new Date(d.date + 'T12:00:00');
+              const formatted = dateObj.toLocaleDateString('en-US', {
+                weekday: 'long', month: 'short', day: 'numeric',
+              });
+              const tlEmojis = d.timeline_events?.map(e => e.emoji || '📝').filter(Boolean) || [];
+              const tlTimes = d.timeline_events?.map(e => e.time || '').filter(Boolean) || [];
+              return {
+                id: d.id,
+                date: formatted,
+                rawDate: d.date,
+                emojis: tlEmojis.length > 0 ? tlEmojis : [d.primary_emoji || '📝'],
+                times: tlTimes,
+                preview: d.diary_preview || d.diary_text?.slice(0, 100) || 'No preview available',
+                total: d.total_spending || 0,
+                hasPhoto: !!d.photo_url,
+                photoUrl: d.photo_url,
+                photoGradient: GRADIENTS[i % GRADIENTS.length],
+                primaryEmoji: d.primary_emoji || '📝',
+                diaryText: d.diary_text,
+                spendingInsight: d.spending_insight,
+                tomorrowSuggestion: d.tomorrow_suggestion,
+              };
             });
-            const tlEmojis = d.timeline_events?.map(e => e.emoji || '📝').filter(Boolean) || [];
-            const tlTimes = d.timeline_events?.map(e => e.time || '').filter(Boolean) || [];
-            return {
-              id: d.id,
-              date: formatted,
-              rawDate: d.date,
-              emojis: tlEmojis.length > 0 ? tlEmojis : [d.primary_emoji || '📝'],
-              times: tlTimes,
-              preview: d.diary_preview || d.diary_text?.slice(0, 100) || 'No preview available',
-              total: d.total_spending || 0,
-              hasPhoto: !!d.photo_url,
-              photoUrl: d.photo_url,
-              photoGradient: GRADIENTS[i % GRADIENTS.length],
-              primaryEmoji: d.primary_emoji || '📝',
-              diaryText: d.diary_text,
-              spendingInsight: d.spending_insight,
-              tomorrowSuggestion: d.tomorrow_suggestion,
-            };
-          });
-          setDiaries(mapped);
-          // Compute weekly total (Mon-Sun of current week)
-          const weekDates = getWeekDates();
-          const weekTotal = mapped
-            .filter(d => d.rawDate && weekDates.includes(d.rawDate))
-            .reduce((s, d) => s + d.total, 0);
-          setWeeklyTotal(weekTotal);
-        }
-      })
-      .catch(() => {
-        // Keep mock data on error
-      });
-  }, []);
+            setDiaries(mapped);
+            const weekDates = getWeekDates();
+            const weekTotal = mapped
+              .filter(d => d.rawDate && weekDates.includes(d.rawDate))
+              .reduce((s, d) => s + d.total, 0);
+            setWeeklyTotal(weekTotal);
+          } else {
+            setDiaries([]);
+          }
+        })
+        .catch(() => {});
+    });
+  }, [router]);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.replace('/login');
+  };
+
+  if (!authReady) {
+    return (
+      <div className="max-w-[393px] mx-auto min-h-dvh flex items-center justify-center" style={{ background: '#ffffff' }}>
+        <div className="text-gray-400 text-sm">Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -292,13 +318,23 @@ export default function DayFlowFeed() {
           <div className="text-2xl font-bold text-[#1a1a1a] font-[family-name:var(--font-outfit)]">
             DayFlow
           </div>
-          <button
-            onClick={() => router.push('/profile')}
-            className="w-9 h-9 rounded-full bg-white flex items-center justify-center text-gray-700 text-lg hover:bg-gray-100 transition-colors shadow-sm border border-gray-200"
-            title="Profile"
-          >
-            👤
-          </button>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500 font-medium capitalize">{userName}</span>
+            <button
+              onClick={() => router.push('/profile')}
+              className="w-9 h-9 rounded-full bg-white flex items-center justify-center text-gray-700 text-lg hover:bg-gray-100 transition-colors shadow-sm border border-gray-200"
+              title="Profile"
+            >
+              👤
+            </button>
+            <button
+              onClick={handleLogout}
+              className="text-xs text-gray-400 hover:text-red-500 transition-colors"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}
+            >
+              Logout
+            </button>
+          </div>
         </div>
 
         {/* Feed */}

@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001';
 
 interface ProfileData {
   name: string;
@@ -19,6 +20,7 @@ export default function ProfilePage() {
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [userId, setUserId] = useState<string>('');
   const [profile, setProfile] = useState<ProfileData>({
     name: '',
     gender: '',
@@ -27,33 +29,42 @@ export default function ProfilePage() {
     photo_url: '',
   });
 
-  // Load profile data from backend on mount
+  // Check auth and load profile data from backend on mount
   useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        const res = await fetch(`${BACKEND_URL}/api/user?user_id=default`);
-        const data = await res.json();
-        setProfile({
-          name: data.name || '',
-          gender: data.gender || '',
-          age: data.age?.toString() || '',
-          calendar_url: data.calendar_url || '',
-          photo_url: data.photo_url || '',
-        });
-
-        // Also check localStorage for calendar URL (in case it was set but not saved to DB)
-        const calUrl = localStorage.getItem('dayflow_calendar_url');
-        if (calUrl && !data.calendar_url) {
-          setProfile(prev => ({ ...prev, calendar_url: calUrl }));
-        }
-      } catch (err) {
-        console.error('Failed to load profile:', err);
-      } finally {
-        setLoading(false);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        router.replace('/login');
+        return;
       }
-    };
-    fetchProfile();
-  }, []);
+      const uid = session.user.id;
+      setUserId(uid);
+
+      const fetchProfile = async () => {
+        try {
+          const res = await fetch(`${BACKEND_URL}/api/user?user_id=${uid}`);
+          const data = await res.json();
+          setProfile({
+            name: data.name || '',
+            gender: data.gender || '',
+            age: data.age?.toString() || '',
+            calendar_url: data.calendar_url || '',
+            photo_url: data.photo_url || '',
+          });
+
+          // Also check localStorage for calendar URL (in case it was set but not saved to DB)
+          const calUrl = localStorage.getItem('dayflow_calendar_url');
+          if (calUrl && !data.calendar_url) {
+            setProfile(prev => ({ ...prev, calendar_url: calUrl }));
+          }
+        } catch (err) {
+          console.error('Failed to load profile:', err);
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchProfile();
+    });
+  }, [router]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -66,7 +77,7 @@ export default function ProfilePage() {
         photo_url: profile.photo_url || null,
       };
 
-      const res = await fetch(`${BACKEND_URL}/api/user?user_id=default`, {
+      const res = await fetch(`${BACKEND_URL}/api/user?user_id=${userId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -278,7 +289,7 @@ export default function ProfilePage() {
               if (confirm('Are you sure you want to clear all profile data?')) {
                 try {
                   // Clear profile in DB
-                  await fetch(`${BACKEND_URL}/api/user?user_id=default`, {
+                  await fetch(`${BACKEND_URL}/api/user?user_id=${userId}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
