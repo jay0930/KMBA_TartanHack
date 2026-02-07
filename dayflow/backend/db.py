@@ -121,6 +121,12 @@ async def get_diary_history(limit: int = 30) -> list:
     return result.data
 
 
+async def delete_diary(diary_id: str) -> bool:
+    """Delete a diary entry by ID. Cascade deletes timeline_events, photos, etc."""
+    supabase.table("diaries").delete().eq("id", diary_id).execute()
+    return True
+
+
 # ── Timeline Events ─────────────────────────────────────────────────
 
 async def save_timeline_events(diary_id: str, events: list[dict]) -> list:

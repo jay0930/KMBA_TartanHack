@@ -204,6 +204,7 @@ export default function DayFlowFeed() {
   const [selectedDiary, setSelectedDiary] = useState<MockDiary | null>(null);
   const [diaries, setDiaries] = useState<MockDiary[]>(MOCK_DIARIES);
   const [weeklyTotal, setWeeklyTotal] = useState(121.75);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     fetch(`${BACKEND_URL}/api/diary/history?limit=30`)
@@ -374,7 +375,7 @@ export default function DayFlowFeed() {
             </div>
 
             {/* Spending */}
-            <div className="flex justify-between items-center p-3 px-4 rounded-xl mb-3" style={{ background: '#FFF3E0' }}>
+            <div className="flex justify-between items-center p-3 px-4 rounded-xl mb-3" style={{ background: 'rgba(255,144,19,0.08)' }}>
               <span className="text-[13px]" style={{ color: '#FF9013' }}>Total Spending</span>
               <span className="text-lg font-bold" style={{ color: '#FF9013' }}>
                 ${selectedDiary.total.toFixed(2)}
@@ -383,15 +384,45 @@ export default function DayFlowFeed() {
 
             {/* Spending Insight */}
             {selectedDiary.spendingInsight && (
-              <div className="p-3 px-4 rounded-xl text-[13px] mb-3" style={{ background: '#FFF3E0', color: '#FF9013' }}>
-                💰 {selectedDiary.spendingInsight}
+              <div className="p-3 px-4 rounded-xl text-[13px] mb-3" style={{ background: 'rgba(0,70,255,0.06)', color: '#0046FF' }}>
+                📊 {selectedDiary.spendingInsight}
               </div>
             )}
 
             {/* Tomorrow Tip */}
-            <div className="p-3 px-4 rounded-xl text-[13px]" style={{ background: '#F5F1DC', color: '#0046FF' }}>
-              💡 {selectedDiary.tomorrowSuggestion || "Tomorrow's tip: Try making coffee at home — save $4.50 and enjoy the ritual!"}
+            <div className="p-3 px-4 rounded-xl text-[13px]" style={{ background: 'rgba(115,200,210,0.12)', color: '#0e7490' }}>
+              🌱 {selectedDiary.tomorrowSuggestion || "Tomorrow's tip: Try making coffee at home — save $4.50 and enjoy the ritual!"}
             </div>
+
+            {/* Delete */}
+            <button
+              onClick={async () => {
+                if (deleting) return;
+                if (!confirm('Are you sure you want to delete this diary?')) return;
+                setDeleting(true);
+                try {
+                  await fetch(`${BACKEND_URL}/api/diary/${selectedDiary.id}`, { method: 'DELETE' });
+                  setDiaries(prev => prev.filter(d => d.id !== selectedDiary.id));
+                  setWeeklyTotal(prev => prev - selectedDiary.total);
+                  setSelectedDiary(null);
+                } catch (err) {
+                  console.error('Failed to delete diary:', err);
+                } finally {
+                  setDeleting(false);
+                }
+              }}
+              disabled={deleting}
+              className="w-full mt-6 py-3 rounded-xl text-[13px] font-medium transition-colors"
+              style={{
+                background: 'transparent',
+                color: deleting ? '#ccc' : '#ef4444',
+                border: '1px solid',
+                borderColor: deleting ? '#e5e7eb' : '#fecaca',
+                cursor: deleting ? 'default' : 'pointer',
+              }}
+            >
+              {deleting ? 'Deleting...' : 'Delete this diary'}
+            </button>
           </div>
         </div>
       )}

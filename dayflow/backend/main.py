@@ -29,6 +29,7 @@ from db import (
     save_photos as db_save_photos,
     get_photos as db_get_photos,
     upload_photo_to_storage,
+    delete_diary as db_delete_diary,
 )
 
 app = FastAPI()
@@ -207,6 +208,13 @@ async def get_diary_detail(diary_id: str):
     if not diary:
         return {"error": "Diary not found"}
     return diary
+
+
+@app.delete("/api/diary/{diary_id}")
+async def delete_diary(diary_id: str):
+    """Delete a diary entry and all related data (cascade)."""
+    await db_delete_diary(diary_id)
+    return {"ok": True}
 
 
 # ── Photos ───────────────────────────────────────────────────────────

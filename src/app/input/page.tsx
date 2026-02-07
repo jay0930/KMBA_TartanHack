@@ -281,6 +281,7 @@ function PhotoStep({ onNext }: { onNext: (photos: PhotoEvent[]) => void }) {
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzed, setAnalyzed] = useState(false);
   const [captions, setCaptions] = useState<{ emoji: string; caption: string; time: string }[]>([]);
+  const [editingCaptionIdx, setEditingCaptionIdx] = useState<number | null>(null);
 
   const MOCK_CAPTIONS = [
     { emoji: '☕', caption: 'Morning coffee at Blue Bottle' },
@@ -453,17 +454,49 @@ function PhotoStep({ onNext }: { onNext: (photos: PhotoEvent[]) => void }) {
                       </div>
                     )}
                   </div>
-                  {/* Caption */}
+                  {/* Caption — tap to edit */}
                   {analyzed && (
-                    <div style={{
-                      padding: '10px 14px',
-                      background: 'white',
-                      fontSize: 13, fontWeight: 500, color: '#555',
-                      display: 'flex', alignItems: 'center', gap: 6,
-                    }}>
-                      <span style={{ fontSize: 14 }}>{cap.emoji}</span>
-                      {cap.caption}
-                    </div>
+                    editingCaptionIdx === i ? (
+                      <div style={{
+                        padding: '6px 10px', background: 'white',
+                        display: 'flex', alignItems: 'center', gap: 6,
+                      }}>
+                        <span style={{ fontSize: 14 }}>{cap.emoji}</span>
+                        <input
+                          autoFocus
+                          value={cap.caption}
+                          onChange={(e) => {
+                            const updated = [...captions];
+                            const fallback = MOCK_CAPTIONS[i % MOCK_CAPTIONS.length];
+                            if (!updated[i]) updated[i] = { ...fallback, time: formatFileTime(previews[i].time) };
+                            updated[i] = { ...updated[i], caption: e.target.value };
+                            setCaptions(updated);
+                          }}
+                          onBlur={() => setEditingCaptionIdx(null)}
+                          onKeyDown={(e) => e.key === 'Enter' && setEditingCaptionIdx(null)}
+                          style={{
+                            flex: 1, border: 'none', outline: 'none',
+                            fontSize: 13, fontWeight: 500, color: '#333',
+                            padding: '4px 0', borderBottom: '1.5px solid #0046FF',
+                            background: 'transparent',
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <div
+                        onClick={() => setEditingCaptionIdx(i)}
+                        style={{
+                          padding: '10px 14px', background: 'white',
+                          fontSize: 13, fontWeight: 500, color: '#555',
+                          display: 'flex', alignItems: 'center', gap: 6,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <span style={{ fontSize: 14 }}>{cap.emoji}</span>
+                        <span style={{ flex: 1 }}>{cap.caption}</span>
+                        <span style={{ fontSize: 10, color: '#bbb' }}>✏️</span>
+                      </div>
+                    )
                   )}
                 </div>
               );
