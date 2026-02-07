@@ -242,6 +242,17 @@ async def save_calendar(body: SaveCalendarRequest):
     Also bridges events into timeline_events for unified timeline.
     """
     event_dicts = [e.model_dump() for e in body.events]
+
+    # Generate emojis via LLM for events that don't have one
+    needs_emoji = [e for e in event_dicts if not e.get("emoji")]
+    if needs_emoji:
+        emojis = await _assign_emojis(needs_emoji)
+        emoji_idx = 0
+        for e in event_dicts:
+            if not e.get("emoji") and emoji_idx < len(emojis):
+                e["emoji"] = emojis[emoji_idx]
+                emoji_idx += 1
+
     rows = await db_save_calendar_events(body.date, event_dicts, body.diary_id)
 
     # Bridge to timeline_events if diary exists
@@ -268,6 +279,47 @@ async def delete_calendar(date: str = Query(...)):
     """Delete all calendar events for a date (re-import)."""
     await db_delete_calendar_events(date)
     return {"ok": True}
+
+
+# ── Emoji generation (Dedalus LLM) ──────────────────────────────────
+
+EMOJI_PROMPT = """\
+Given these calendar events, assign a single emoji to each that best represents the activity.
+Return ONLY a JSON array of emojis in the same order. No markdown, no explanation.
+
+Events:
+{events}
+
+Example input: ["Team standup", "Lunch at cafe", "Gym session"]
+Example output: ["💻", "🍽️", "🏋️"]
+"""
+
+
+async def _assign_emojis(events: list[dict]) -> list[str]:
+    """Call LLM to assign emojis to calendar events in one batch."""
+    titles = [e.get("title", "") for e in events]
+    if not titles:
+        return []
+
+    prompt = EMOJI_PROMPT.replace("{events}", json.dumps(titles))
+
+    try:
+        result = await runner.run(
+            model="anthropic/claude-sonnet-4-5-20250929",
+            input=[{"role": "user", "content": prompt}],
+            max_steps=1,
+        )
+        text = (result.final_output or "").strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+        emojis = json.loads(text)
+        if isinstance(emojis, list) and len(emojis) == len(titles):
+            return emojis
+    except Exception:
+        pass
+
+    # Fallback: default emoji for all
+    return ["📅"] * len(titles)
 
 
 # ── Photo analysis (Dedalus Vision) ─────────────────────────────────

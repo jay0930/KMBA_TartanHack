@@ -59,7 +59,6 @@ async def get_or_create_diary(date: str) -> dict:
     result = (
         supabase.table("diaries")
         .insert({"date": date})
-        .select()
         .execute()
     )
     return result.data[0]
@@ -198,6 +197,8 @@ async def save_calendar_events(date: str, events: list[dict], diary_id: str | No
     rows = []
     for ev in events:
         row = {"date": date, **ev}
+        # Remove fields not in calendar_events table schema
+        row.pop("emoji", None)
         # Convert short time "10:00" to full ISO timestamp for start_time/end_time
         for field in ("start_time", "end_time"):
             val = row.get(field)
