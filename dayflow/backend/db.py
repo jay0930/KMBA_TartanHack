@@ -44,6 +44,27 @@ async def test_connection() -> dict:
 
 # ── Diaries ─────────────────────────────────────────────────────────
 
+async def get_or_create_diary(date: str) -> dict:
+    """Return existing diary for a date, or create a draft one."""
+    result = (
+        supabase.table("diaries")
+        .select("*")
+        .eq("date", date)
+        .limit(1)
+        .execute()
+    )
+    if result.data and len(result.data) > 0:
+        return result.data[0]
+
+    result = (
+        supabase.table("diaries")
+        .insert({"date": date})
+        .select()
+        .execute()
+    )
+    return result.data[0]
+
+
 async def save_diary(date: str, diary_data: dict) -> dict:
     """Save or update a diary entry for a given date.
 
@@ -83,14 +104,20 @@ async def get_diary_by_id(diary_id: str) -> dict | None:
 
 
 async def get_diary_history(limit: int = 30) -> list:
-    """Fetch the most recent diary entries with their timeline events."""
+    """Fetch the most recent diary entries with their timeline events (excluding soft-deleted)."""
     result = (
         supabase.table("diaries")
-        .select("*, timeline_events(id, time, emoji, title, spending, source)")
+        .select("*, timeline_events(id, time, emoji, title, spending, source, is_deleted)")
         .order("date", desc=True)
         .limit(limit)
         .execute()
     )
+    # Filter out soft-deleted timeline events
+    for diary in result.data:
+        if diary.get("timeline_events"):
+            diary["timeline_events"] = [
+                e for e in diary["timeline_events"] if not e.get("is_deleted")
+            ]
     return result.data
 
 
@@ -101,6 +128,43 @@ async def save_timeline_events(diary_id: str, events: list[dict]) -> list:
     rows = [{"diary_id": diary_id, **event} for event in events]
     result = supabase.table("timeline_events").insert(rows).execute()
     return result.data
+
+
+async def get_active_timeline(diary_id: str) -> list:
+    """Return timeline events that are not soft-deleted, sorted by time."""
+    result = (
+        supabase.table("timeline_events")
+        .select("*")
+        .eq("diary_id", diary_id)
+        .eq("is_deleted", False)
+        .order("time")
+        .execute()
+    )
+    return result.data
+
+
+async def add_manual_event(diary_id: str, event: dict) -> dict:
+    """Insert a single manual timeline event."""
+    row = {
+        "diary_id": diary_id,
+        **event,
+        "source": "manual",
+        "spending": event.get("spending", 0),
+        "is_deleted": False,
+    }
+    result = supabase.table("timeline_events").insert(row).execute()
+    return result.data[0]
+
+
+async def soft_delete_event(event_id: str) -> dict:
+    """Soft-delete a timeline event (set is_deleted=true)."""
+    result = (
+        supabase.table("timeline_events")
+        .update({"is_deleted": True})
+        .eq("id", event_id)
+        .execute()
+    )
+    return {"success": True}
 
 
 async def update_spending(event_id: str, amount: int) -> dict:
@@ -128,6 +192,11 @@ async def save_calendar_events(date: str, events: list[dict], diary_id: str | No
     rows = []
     for ev in events:
         row = {"date": date, **ev}
+        # Convert short time "10:00" to full ISO timestamp for start_time/end_time
+        for field in ("start_time", "end_time"):
+            val = row.get(field)
+            if val and len(val) <= 5:  # e.g. "10:00"
+                row[field] = f"{date}T{val}:00"
         if diary_id:
             row["diary_id"] = diary_id
         rows.append(row)
@@ -154,6 +223,85 @@ async def delete_calendar_events(date: str) -> None:
 
 
 # ── Photos ───────────────────────────────────────────────────────────
+
+async def save_photo_event(diary_id: str, photo: dict) -> dict:
+    """Save a photo to the photos table AND create a timeline_event for it."""
+    # 1. Insert into photos table
+    photo_result = (
+        supabase.table("photos")
+        .insert({
+            "diary_id": diary_id,
+            "url": photo.get("photo_url") or photo.get("url", ""),
+            "thumbnail_url": photo.get("thumbnail_url"),
+            "ai_analysis": photo.get("ai_analysis") or photo.get("description", ""),
+            "extracted_time": photo.get("extracted_time") or photo.get("time"),
+            "extracted_location": photo.get("extracted_location") or photo.get("location"),
+        })
+        .execute()
+    )
+    photo_row = photo_result.data[0]
+
+    # 2. Insert into timeline_events
+    event_result = (
+        supabase.table("timeline_events")
+        .insert({
+            "diary_id": diary_id,
+            "time": photo.get("extracted_time") or photo.get("time") or "12:00",
+            "emoji": photo.get("emoji", "📸"),
+            "title": photo.get("title", "Photo moment"),
+            "description": photo.get("description") or (photo.get("ai_analysis") or "")[:100],
+            "location": photo.get("extracted_location") or photo.get("location"),
+            "source": "photo",
+            "source_id": photo_row["id"],
+            "photo_url": photo.get("photo_url") or photo.get("url", ""),
+            "photo_analysis": photo.get("ai_analysis") or photo.get("description", ""),
+            "spending": 0,
+            "is_deleted": False,
+        })
+        .execute()
+    )
+    event_row = event_result.data[0]
+
+    return {"photo": photo_row, "event": event_row}
+
+
+async def save_calendar_as_timeline(diary_id: str, events: list[dict]) -> dict:
+    """Save calendar events into timeline_events with source='calendar' and dedup by source_id."""
+    # Get existing calendar source_ids for this diary
+    existing = (
+        supabase.table("timeline_events")
+        .select("source_id")
+        .eq("diary_id", diary_id)
+        .eq("source", "calendar")
+        .eq("is_deleted", False)
+        .execute()
+    ).data
+    existing_ids = {e["source_id"] for e in existing if e.get("source_id")}
+
+    # Filter out duplicates
+    new_events = [e for e in events if not e.get("calendar_id") or e.get("calendar_id") not in existing_ids]
+    if not new_events:
+        return {"inserted": 0, "events": []}
+
+    rows = []
+    for i, e in enumerate(new_events):
+        rows.append({
+            "diary_id": diary_id,
+            "time": e.get("start_time", e.get("time", "12:00"))[:5],  # HH:MM
+            "emoji": e.get("emoji", "📅"),
+            "title": e.get("title", ""),
+            "description": e.get("description", ""),
+            "location": e.get("location"),
+            "source": "calendar",
+            "source_id": e.get("calendar_id"),
+            "spending": 0,
+            "is_deleted": False,
+            "sort_order": i,
+        })
+
+    result = supabase.table("timeline_events").insert(rows).execute()
+    return {"inserted": len(result.data), "events": result.data}
+
 
 async def save_photo(diary_id: str, photo_data: dict) -> dict:
     """Save a photo record linked to a diary entry."""

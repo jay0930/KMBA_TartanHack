@@ -10,16 +10,22 @@ import json
 
 from db import (
     test_connection,
+    get_or_create_diary,
     save_diary as db_save_diary,
     save_timeline_events,
+    get_active_timeline,
+    add_manual_event,
+    soft_delete_event,
     update_spending,
     save_thumb as db_save_thumb,
     get_diary_by_id as db_get_diary_by_id,
     get_diary_history as db_get_diary_history,
     save_calendar_events as db_save_calendar_events,
+    save_calendar_as_timeline,
     get_calendar_events as db_get_calendar_events,
     delete_calendar_events as db_delete_calendar_events,
     save_photo as db_save_photo,
+    save_photo_event as db_save_photo_event,
     save_photos as db_save_photos,
     get_photos as db_get_photos,
     upload_photo_to_storage,
@@ -102,6 +108,11 @@ class CalendarEvent(BaseModel):
     calendar_id: str | None = None  # Google event ID for dedup
 
 
+class ManualEventRequest(BaseModel):
+    diary_id: str
+    event: TimelineEvent
+
+
 class SaveCalendarRequest(BaseModel):
     date: str
     events: list[CalendarEvent]
@@ -125,6 +136,28 @@ async def update_timeline_spending(body: UpdateSpendingRequest):
     """Update the spending amount for a timeline event."""
     row = await update_spending(body.event_id, body.spending)
     return row
+
+
+@app.get("/api/timeline")
+async def get_timeline(diary_id: str = Query(...)):
+    """Get active (non-deleted) timeline events for a diary, sorted by time."""
+    events = await get_active_timeline(diary_id)
+    return {"timeline": events}
+
+
+@app.post("/api/timeline/add")
+async def add_timeline_event(body: ManualEventRequest):
+    """Add a manual timeline event to a diary."""
+    event_data = body.event.model_dump()
+    row = await add_manual_event(body.diary_id, event_data)
+    return {"event": row}
+
+
+@app.delete("/api/timeline/{event_id}")
+async def delete_timeline_event(event_id: str):
+    """Soft-delete a timeline event (set is_deleted=true)."""
+    result = await soft_delete_event(event_id)
+    return result
 
 
 @app.post("/api/diary/save")
@@ -160,6 +193,13 @@ async def diary_history(limit: int = Query(default=30, ge=1, le=100)):
     return await db_get_diary_history(limit)
 
 
+@app.get("/api/diary/draft")
+async def get_or_create_draft(date: str = Query(...)):
+    """Get or create a draft diary for a given date. Returns diary_id."""
+    diary = await get_or_create_diary(date)
+    return diary
+
+
 @app.get("/api/diary/{diary_id}")
 async def get_diary_detail(diary_id: str):
     """Get a single diary with full timeline events and photos."""
@@ -190,10 +230,22 @@ async def get_photos_endpoint(diary_id: str):
 
 @app.post("/api/calendar/events")
 async def save_calendar(body: SaveCalendarRequest):
-    """Import Google Calendar events for a date (upserts by calendar_id)."""
+    """Import Google Calendar events for a date (upserts by calendar_id).
+    Also bridges events into timeline_events for unified timeline.
+    """
     event_dicts = [e.model_dump() for e in body.events]
     rows = await db_save_calendar_events(body.date, event_dicts, body.diary_id)
-    return {"saved": len(rows), "events": rows}
+
+    # Bridge to timeline_events if diary exists
+    diary = await get_or_create_diary(body.date)
+    timeline_result = await save_calendar_as_timeline(diary["id"], event_dicts)
+
+    return {
+        "saved": len(rows),
+        "events": rows,
+        "diary_id": diary["id"],
+        "timeline_inserted": timeline_result["inserted"],
+    }
 
 
 @app.get("/api/calendar/events")
@@ -268,12 +320,17 @@ async def _analyze_one(raw: bytes, mime: str, filename: str) -> dict:
 
 
 @app.post("/api/photos/upload")
-async def upload_and_analyze_photos(files: list[UploadFile] = File(...)):
+async def upload_and_analyze_photos(
+    files: list[UploadFile] = File(...),
+    date: str = Query(default=""),
+):
     """Upload photos to Supabase Storage + analyze with AI.
+    If date is provided, also saves to photos table + timeline_events.
 
     Returns:
         - photos: list of { url, filename }
         - events: list of { time, title, emoji, source } (structured PhotoEvent)
+        - diary_id: if date was provided
     """
     if len(files) > 10:
         return {"error": "Maximum 10 images allowed"}
@@ -315,7 +372,27 @@ async def upload_and_analyze_photos(files: list[UploadFile] = File(...)):
                 a["photo_url"] = photo_urls[i]["url"]
             events.append(a)
 
-    return {"photos": photo_urls, "events": events}
+    # If date provided, save to DB (photos + timeline_events)
+    diary_id = None
+    if date:
+        diary = await get_or_create_diary(date)
+        diary_id = diary["id"]
+        for i, ev in enumerate(events):
+            url = photo_urls[i].get("url") if i < len(photo_urls) else None
+            if url:
+                try:
+                    await db_save_photo_event(diary_id, {
+                        "photo_url": url,
+                        "ai_analysis": ev.get("description", ""),
+                        "time": ev.get("time", "12:00"),
+                        "emoji": ev.get("emoji", "📸"),
+                        "title": ev.get("title", "Photo"),
+                        "description": ev.get("description", ""),
+                    })
+                except Exception:
+                    pass  # photo already saved to storage, timeline insert is best-effort
+
+    return {"photos": photo_urls, "events": events, "diary_id": diary_id}
 
 
 @app.post("/api/photos/analyze")
