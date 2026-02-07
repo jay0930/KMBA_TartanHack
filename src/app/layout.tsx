@@ -1,27 +1,30 @@
-import type { Metadata } from "next";
-import { Rubik, Fragment_Mono, Rubik_Bubbles } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { Outfit } from "next/font/google";
 import "./globals.css";
 
-const rubik = Rubik({
-  variable: "--font-rubik",
+const outfit = Outfit({
+  variable: "--font-outfit",
   subsets: ["latin"],
 });
 
-const fragmentMono = Fragment_Mono({
-  variable: "--font-fragment-mono",
-  subsets: ["latin"],
-  weight: "400",
-});
-
-const rubikBubbles = Rubik_Bubbles({
-  variable: "--font-rubik-bubbles",
-  subsets: ["latin"],
-  weight: "400",
-});
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+  themeColor: "#3b82f6",
+};
 
 export const metadata: Metadata = {
-  title: "Nonsense — A Wearable Statements Pop Up",
-  description: "A new fashion company. Archive sale pop-up event.",
+  title: "DayFlow — Your Daily Mosaic of Moments & Money",
+  description: "An AI diary that pieces together your day from calendar, photos, and conversation.",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "DayFlow",
+  },
 };
 
 export default function RootLayout({
@@ -31,9 +34,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        className={`${rubik.variable} ${fragmentMono.variable} ${rubikBubbles.variable} antialiased`}
-      >
+      <body className={`${outfit.variable} antialiased`}>
         {children}
       </body>
     </html>

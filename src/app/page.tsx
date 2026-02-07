@@ -1,196 +1,329 @@
-import Image from "next/image";
-import { ArrowUpRight } from "lucide-react";
+'use client';
 
-export default function Home() {
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import EmojiTimeline from '@/components/EmojiTimeline';
+
+const MOCK_DIARIES = [
+  {
+    id: '1',
+    date: 'Thursday, Feb 5',
+    emojis: ['☕', '🍜', '📚', '🍺'],
+    times: ['8am', '12pm', '3pm', '7pm'],
+    preview: 'A cozy day of coffee and catching up with old friends at the noodle place...',
+    total: 47.5,
+    hasPhoto: true,
+    photoUrl: '/images/grid-1.png',
+    photoGradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    primaryEmoji: '☕',
+  },
+  {
+    id: '2',
+    date: 'Wednesday, Feb 4',
+    emojis: ['🏃', '☕', '💻', '🍕', '🎬'],
+    times: ['7am', '9am', '10am', '1pm', '7pm'],
+    preview: 'Started with a run along the river, then powered through a long coding session...',
+    total: 32.0,
+    hasPhoto: true,
+    photoUrl: '/images/209895_00_2x.jpg',
+    photoGradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+    primaryEmoji: '🏃',
+  },
+  {
+    id: '3',
+    date: 'Tuesday, Feb 3',
+    emojis: ['🧘', '🥗', '🎨', '🍷'],
+    times: ['7am', '12pm', '4pm', '8pm'],
+    preview: 'Morning yoga cleared my mind, then spent the afternoon painting at the studio...',
+    total: 28.0,
+    hasPhoto: true,
+    photoUrl: '/images/grid-2.png',
+    photoGradient: 'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)',
+    primaryEmoji: '🧘',
+  },
+  {
+    id: '4',
+    date: 'Monday, Feb 2',
+    emojis: ['☕', '💼', '🍔', '🎮', '🛁'],
+    times: ['8am', '9am', '1pm', '6pm', '10pm'],
+    preview: 'Back to the grind — meetings all morning, grabbed burgers with the team after...',
+    total: 53.25,
+    hasPhoto: true,
+    photoUrl: '/images/grid-4.png',
+    photoGradient: 'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)',
+    primaryEmoji: '💼',
+  },
+  {
+    id: '5',
+    date: 'Sunday, Feb 1',
+    emojis: ['🥞', '📖', '🚶', '🍣'],
+    times: ['10am', '1pm', '4pm', '7pm'],
+    preview: 'Lazy brunch with pancakes, read half a novel, then evening sushi date downtown...',
+    total: 61.5,
+    hasPhoto: true,
+    photoUrl: '/images/grid-6.png',
+    photoGradient: 'linear-gradient(135deg, #89f7fe 0%, #66a6ff 100%)',
+    primaryEmoji: '📖',
+  },
+  {
+    id: '6',
+    date: 'Saturday, Jan 31',
+    emojis: ['🏔️', '📸', '☕', '🍲'],
+    times: ['9am', '12pm', '3pm', '7pm'],
+    preview: 'Hiked up to the overlook and took amazing photos, warmed up with hot pot after...',
+    total: 39.0,
+    hasPhoto: true,
+    photoUrl: '/images/grid-8.png',
+    photoGradient: 'linear-gradient(135deg, #96fbc4 0%, #f9f586 100%)',
+    primaryEmoji: '🏔️',
+  },
+];
+
+interface MockDiary {
+  id: string;
+  date: string;
+  emojis: string[];
+  times: string[];
+  preview: string;
+  total: number;
+  hasPhoto: boolean;
+  photoUrl?: string;
+  photoGradient: string;
+  primaryEmoji: string;
+}
+
+function TodayCard({ onClick }: { onClick: () => void }) {
+  const today = new Date();
+  const formatted = today.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  });
+
   return (
-    <div className="min-h-screen bg-white text-black font-[family-name:var(--font-rubik)]">
-      {/* Nav */}
-      <nav className="flex gap-6 px-[10px] py-[22px] font-[family-name:var(--font-fragment-mono)] text-[15px] uppercase tracking-[-0.6px]">
-        <a href="#about" className="hover:opacity-60 transition-opacity">About</a>
-        <a href="#directions" className="hover:opacity-60 transition-opacity">Directions</a>
-      </nav>
-
-      {/* Header */}
-      <header className="px-[10px] pb-8">
-        <div className="flex justify-between font-[family-name:var(--font-fragment-mono)] text-[12px] tracking-[-0.48px] mb-4">
-          <span>A new fashion company</span>
-          <span>@nonsensefashion</span>
-        </div>
-        <h1 className="font-[family-name:var(--font-rubik-bubbles)] text-[55px] leading-[1.1] tracking-[-2.2px]">
-          Nonsense
-        </h1>
-      </header>
-
-      {/* Main */}
-      <main className="px-[10px]">
-        {/* Section 2 - Info */}
-        <section className="flex flex-col gap-0 mb-6">
-          {/* What */}
-          <div className="py-6 border-t border-black/10">
-            <p className="font-[family-name:var(--font-fragment-mono)] text-[12px] tracking-[-0.48px] mb-2">What:</p>
-            <p className="text-[16px] leading-[1.4]">archive sale</p>
-          </div>
-          {/* When */}
-          <div className="py-6 border-t border-black/10">
-            <p className="font-[family-name:var(--font-fragment-mono)] text-[12px] tracking-[-0.48px] mb-2">When:</p>
-            <p className="text-[16px] leading-[1.4]">may 11th 11am-6pm</p>
-          </div>
-          {/* Where */}
-          <div className="py-6 border-t border-black/10 border-b">
-            <p className="font-[family-name:var(--font-fragment-mono)] text-[12px] tracking-[-0.48px] mb-2">Where:</p>
-            <p className="text-[16px] leading-[1.4]">123 Candyland Ln,<br />Portland, OR</p>
-          </div>
-        </section>
-
-        {/* Grid */}
-        <div className="grid grid-cols-1 gap-[5px]">
-          {/* Card 1 - Full image */}
-          <div className="relative aspect-square rounded-[8px] overflow-hidden">
-            <Image src="/images/grid-1.png" alt="Product" fill className="object-cover" />
-          </div>
-
-          {/* Card 2 - Dark bg + product */}
-          <div className="aspect-square rounded-[8px] overflow-hidden bg-[#252525] p-[13px] flex flex-col justify-between">
-            <div className="relative flex-1 rounded-[4px] overflow-hidden">
-              <Image src="/images/grid-2.png" alt="T-Shirt" fill className="object-cover" />
-            </div>
-            <div className="flex justify-between mt-3 font-[family-name:var(--font-fragment-mono)] text-[12px] text-white tracking-[-0.48px]">
-              <span>T-Shirt</span>
-              <span>Spring 25&apos;</span>
-            </div>
-          </div>
-
-          {/* Card 3 - Google Maps link */}
-          <div className="aspect-square rounded-[8px] overflow-hidden bg-black p-[13px] flex flex-col justify-between">
-            <div className="font-[family-name:var(--font-fragment-mono)] text-[12px] text-white tracking-[-0.48px]">
-              Google Maps Link
-            </div>
-            <div className="self-end">
-              <div className="w-[48px] h-[48px] bg-white rounded-full flex items-center justify-center">
-                <ArrowUpRight size={20} className="text-black" />
-              </div>
-            </div>
-          </div>
-
-          {/* Card 4 - Navy bg + product */}
-          <div className="aspect-square rounded-[8px] overflow-hidden bg-[#1B234B] p-[13px] flex flex-col justify-between">
-            <div className="relative flex-1 rounded-[4px] overflow-hidden">
-              <Image src="/images/grid-4.png" alt="Totes" fill className="object-cover" />
-            </div>
-            <div className="flex justify-between mt-3 font-[family-name:var(--font-fragment-mono)] text-[12px] text-white tracking-[-0.48px]">
-              <span>Totes</span>
-              <span>Spring 25&apos;</span>
-            </div>
-          </div>
-
-          {/* Card 5 - Clothing label */}
-          <div className="aspect-square rounded-[8px] overflow-hidden bg-[#F1F1F1] p-[13px] flex items-end">
-            <span className="text-[20px] font-medium">Clothing</span>
-          </div>
-
-          {/* Card 6 - Full image */}
-          <div className="relative aspect-square rounded-[8px] overflow-hidden">
-            <Image src="/images/grid-6.png" alt="Product" fill className="object-cover" />
-          </div>
-
-          {/* Card 7 - Zines label */}
-          <div className="aspect-square rounded-[8px] overflow-hidden bg-[#F7EDDD] p-[13px] flex items-end">
-            <span className="text-[20px] font-medium">Zines</span>
-          </div>
-
-          {/* Card 8 - Dark red bg + product */}
-          <div className="aspect-square rounded-[8px] overflow-hidden bg-[#4F1212] p-[13px] flex flex-col justify-between">
-            <div className="relative flex-1 rounded-[4px] overflow-hidden">
-              <Image src="/images/grid-8.png" alt="Mixtapes" fill className="object-cover" />
-            </div>
-            <div className="flex justify-between mt-3 font-[family-name:var(--font-fragment-mono)] text-[12px] text-white tracking-[-0.48px]">
-              <span>Mixtapes</span>
-              <span>Spring 25&apos;</span>
-            </div>
-          </div>
-
-          {/* Card 9 - Live Music label */}
-          <div className="aspect-square rounded-[8px] overflow-hidden bg-[#969F7D] p-[13px] flex items-end">
-            <span className="text-[20px] font-medium">Live Music</span>
-          </div>
-
-          {/* Card 10 - Substack link */}
-          <div className="aspect-square rounded-[8px] overflow-hidden bg-black p-[13px] flex flex-col justify-between">
-            <div className="font-[family-name:var(--font-fragment-mono)] text-[12px] text-white tracking-[-0.48px]">
-              Follow Us on Substack
-            </div>
-            <div className="self-end">
-              <div className="w-[48px] h-[48px] bg-white rounded-full flex items-center justify-center">
-                <ArrowUpRight size={20} className="text-black" />
-              </div>
-            </div>
-          </div>
-
-          {/* Card 11 - Records label */}
-          <div className="aspect-square rounded-[8px] overflow-hidden bg-[#D3C7B9] p-[13px] flex items-end">
-            <span className="text-[20px] font-medium">Records</span>
-          </div>
-
-          {/* Card 12 - Instagram link */}
-          <div className="aspect-square rounded-[8px] overflow-hidden bg-black p-[13px] flex flex-col justify-between">
-            <div className="font-[family-name:var(--font-fragment-mono)] text-[12px] text-white tracking-[-0.48px]">
-              Browse the Instagram
-            </div>
-            <div className="self-end">
-              <div className="w-[48px] h-[48px] bg-white rounded-full flex items-center justify-center">
-                <ArrowUpRight size={20} className="text-black" />
-              </div>
-            </div>
-          </div>
-
-          {/* Card 13 - Records label (beige) */}
-          <div className="aspect-square rounded-[8px] overflow-hidden bg-[#F7EDDD] p-[13px] flex items-end">
-            <span className="text-[20px] font-medium">Records</span>
-          </div>
-
-          {/* Card 14 - Pink bg + product */}
-          <div className="aspect-square rounded-[8px] overflow-hidden bg-[#EEA6A6] p-[13px] flex flex-col justify-between">
-            <div className="relative flex-1 rounded-[4px] overflow-hidden">
-              <Image src="/images/grid-14.png" alt="Tees" fill className="object-cover" />
-            </div>
-            <div className="flex justify-between mt-3 font-[family-name:var(--font-fragment-mono)] text-[14px] text-black tracking-[-0.56px]">
-              <span>Tees</span>
-              <span>Spring 25&apos;</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Quote */}
-        <p className="text-[28px] leading-[1.3] tracking-[-1.12px] py-12">
-          Nonsense is a rebellion against the ordinary. No trends, no seasons—just wearable statements.
-        </p>
-      </main>
-
-      {/* Footer */}
-      <footer className="px-[40px] pb-10">
-        {/* Newsletter */}
-        <div className="flex items-center justify-between py-6 border-t border-black/10">
-          <span className="text-[16px]">Sign Up for our Newsletter</span>
-          <div className="w-[40px] h-[40px] bg-white border border-black/10 rounded-full flex items-center justify-center">
-            <ArrowUpRight size={16} className="text-black" />
-          </div>
-        </div>
-
-        {/* CTA Image */}
-        <div className="relative w-full aspect-[295/188] rounded-[8px] overflow-hidden my-6">
-          <Image src="/images/footer-cta.png" alt="CTA" fill className="object-cover" />
-        </div>
-
-        {/* Footer Content */}
-        <div className="mt-8">
-          <p className="text-[16px] mb-2">A Wearable Statements Pop Up</p>
-          <h2 className="text-[46px] font-normal leading-[1.1] tracking-[-1.84px] mb-8">Nonsense</h2>
-          <div className="border-t border-black/10 pt-4 space-y-1">
-            <p className="text-[13px] text-black/60">Nonsense&copy; 2025 All Rights Reserved</p>
-            <p className="text-[13px] text-black/60">@nonsenseFashion</p>
-          </div>
-        </div>
-      </footer>
+    <div
+      onClick={onClick}
+      className="cursor-pointer transition-transform"
+      style={{
+        border: '2px dashed rgba(59, 130, 246, 0.4)',
+        borderRadius: 20,
+        padding: '32px 24px',
+        textAlign: 'center',
+        background: 'linear-gradient(135deg, rgba(59,130,246,0.03) 0%, rgba(147,51,234,0.03) 100%)',
+        animation: 'pulse-border 3s ease-in-out infinite',
+      }}
+    >
+      <div className="text-[32px] mb-2">✨</div>
+      <div className="text-xl font-semibold text-[#1a1a1a] font-[family-name:var(--font-outfit)] mb-1">
+        How was your day today?
+      </div>
+      <div className="text-[13px] text-gray-400 mb-4">{formatted}</div>
+      <div className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-blue-500 text-white text-sm font-medium">
+        Start Writing
+      </div>
     </div>
+  );
+}
+
+function DiaryCard({
+  diary,
+  onClick,
+}: {
+  diary: MockDiary;
+  onClick: () => void;
+}) {
+  return (
+    <div
+      onClick={onClick}
+      className="bg-white rounded-[24px] p-5 cursor-pointer transition-all hover:scale-[1.01] hover:shadow-lg"
+      style={{
+        boxShadow: '0 2px 6px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04)',
+      }}
+    >
+      {/* Photo / Emoji Thumbnail */}
+      <div
+        className="w-full flex items-center justify-center overflow-hidden mb-4 relative"
+        style={{
+          height: 140,
+          borderRadius: 16,
+          background: diary.photoGradient,
+        }}
+      >
+        {diary.hasPhoto && diary.photoUrl ? (
+          <img
+            src={diary.photoUrl}
+            alt="diary photo"
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+        ) : diary.hasPhoto ? (
+          <div className="text-sm text-white/80 font-medium">📷 Photo</div>
+        ) : (
+          <span className="text-[48px]">{diary.primaryEmoji}</span>
+        )}
+      </div>
+
+      {/* Content */}
+      <div className="flex flex-col gap-2">
+        <div className="text-[15px] font-semibold text-gray-600 font-[family-name:var(--font-outfit)]">
+          {diary.date}
+        </div>
+
+        <EmojiTimeline emojis={diary.emojis} />
+
+        <div className="text-[14px] text-gray-500 leading-snug truncate">
+          {diary.preview}
+        </div>
+
+        <div className="flex justify-end items-center gap-1 mt-1">
+          <span className="text-[14px]">💰</span>
+          <span className="text-base font-semibold text-gray-700">
+            ${diary.total.toFixed(2)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function DayFlowFeed() {
+  const router = useRouter();
+  const [selectedDiary, setSelectedDiary] = useState<MockDiary | null>(null);
+
+  return (
+    <>
+      <div className="max-w-[393px] mx-auto min-h-dvh relative" style={{ background: '#fafaf9' }}>
+        {/* Header */}
+        <div
+          className="px-5 pb-3 flex justify-between items-center sticky top-0 z-10"
+          style={{
+            background: 'rgba(250,250,249,0.85)',
+            backdropFilter: 'blur(12px)',
+            paddingTop: 'calc(12px + var(--safe-top))',
+          }}
+        >
+          <div className="text-2xl font-bold text-[#1a1a1a] font-[family-name:var(--font-outfit)]">
+            DayFlow
+          </div>
+          <div
+            className="w-9 h-9 rounded-xl flex items-center justify-center cursor-pointer text-base"
+            style={{ background: 'rgba(0,0,0,0.05)' }}
+          >
+            ☀️
+          </div>
+        </div>
+
+        {/* Feed */}
+        <div className="px-4 flex flex-col gap-3.5" style={{ paddingBottom: 'calc(100px + var(--safe-bottom))' }}>
+          {/* Today&apos;s empty card */}
+          <div style={{ animation: 'fade-in-up 0.5s ease-out' }}>
+            <TodayCard onClick={() => router.push('/input')} />
+          </div>
+
+          {/* Past diary cards */}
+          {MOCK_DIARIES.map((diary, i) => (
+            <div
+              key={diary.id}
+              style={{ animation: `fade-in-up 0.5s ease-out ${0.1 * (i + 1)}s both` }}
+            >
+              <DiaryCard diary={diary} onClick={() => setSelectedDiary(diary)} />
+            </div>
+          ))}
+        </div>
+
+        {/* Weekly Summary Bar */}
+        <div
+          className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[393px] pointer-events-none"
+          style={{
+            padding: '40px 16px 0',
+            paddingBottom: 'calc(12px + var(--safe-bottom))',
+            background: 'linear-gradient(to top, rgba(250,250,249,1) 60%, rgba(250,250,249,0))',
+          }}
+        >
+          <div className="bg-white rounded-2xl px-5 py-3 flex justify-between items-center shadow-md pointer-events-auto cursor-pointer">
+            <div>
+              <div className="text-xs text-gray-400">This week</div>
+              <div className="text-lg font-bold text-[#1a1a1a] font-[family-name:var(--font-outfit)]">
+                $121.75
+              </div>
+            </div>
+            <div className="flex gap-0.5">
+              {['#3b82f6', '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6'].map(
+                (c, i) => (
+                  <div
+                    key={i}
+                    className="rounded opacity-70"
+                    style={{
+                      width: 8,
+                      height: 12 + ((i * 7 + 3) % 24),
+                      background: c,
+                    }}
+                  />
+                )
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Diary Detail Modal */}
+      {selectedDiary && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          onClick={() => setSelectedDiary(null)}
+        >
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-[4px]" />
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-[90%] max-w-[400px] bg-white rounded-3xl p-6 max-h-[80vh] overflow-auto"
+            style={{ animation: 'fade-in-up 0.3s ease-out' }}
+          >
+            {/* Header */}
+            <div className="flex justify-between items-center mb-4">
+              <div className="text-base font-semibold font-[family-name:var(--font-outfit)]">
+                {selectedDiary.date}
+              </div>
+              <div
+                onClick={() => setSelectedDiary(null)}
+                className="cursor-pointer text-xl text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </div>
+            </div>
+
+            {/* Hero */}
+            <div
+              className="w-full rounded-2xl flex items-center justify-center mb-4"
+              style={{ height: 160, background: selectedDiary.photoGradient }}
+            >
+              <span className="text-5xl">{selectedDiary.primaryEmoji}</span>
+            </div>
+
+            {/* Emoji Timeline */}
+            <div className="mb-4">
+              <EmojiTimeline emojis={selectedDiary.emojis} times={selectedDiary.times} />
+            </div>
+
+            {/* Diary Text */}
+            <div className="text-sm leading-relaxed text-gray-600 mb-4 p-4 bg-[#fafaf9] rounded-xl">
+              {selectedDiary.preview} It was one of those days where everything just flows
+              naturally. The kind of day you want to remember.
+            </div>
+
+            {/* Spending */}
+            <div className="flex justify-between items-center p-3 px-4 bg-green-50 rounded-xl mb-3">
+              <span className="text-[13px] text-green-800">Total Spending</span>
+              <span className="text-lg font-bold text-green-800">
+                ${selectedDiary.total.toFixed(2)}
+              </span>
+            </div>
+
+            {/* Tomorrow Tip */}
+            <div className="p-3 px-4 bg-blue-50 rounded-xl text-[13px] text-blue-800">
+              💡 Tomorrow&apos;s tip: Try making coffee at home — save $4.50 and enjoy the ritual!
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
