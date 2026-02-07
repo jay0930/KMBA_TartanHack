@@ -148,8 +148,14 @@ async def get_timeline(diary_id: str = Query(...)):
 
 @app.post("/api/timeline/add")
 async def add_timeline_event(body: ManualEventRequest):
-    """Add a manual timeline event to a diary."""
+    """Add a manual timeline event to a diary. Auto-generates emoji via LLM if missing."""
     event_data = body.event.model_dump()
+
+    # Generate emoji if missing or generic default
+    if not event_data.get("emoji") or event_data["emoji"] in ("📌", "📅", "📝"):
+        emojis = await _assign_emojis([event_data])
+        event_data["emoji"] = emojis[0]
+
     row = await add_manual_event(body.diary_id, event_data)
     return {"event": row}
 
