@@ -117,6 +117,25 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 DEFAULT_CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", "primary")
 
 
+def _extract_calendar_id(raw: str) -> str:
+    """Extract calendar ID from a Google Calendar URL or return as-is."""
+    import re
+    # Handle /calendar/ical/CALENDAR_ID/... URLs
+    m = re.search(r'/calendar/ical/([^/]+)', raw)
+    if m:
+        return m.group(1).replace('%40', '@')
+    # Handle embed?src=CALENDAR_ID URLs
+    m = re.search(r'[?&]src=([^&]+)', raw)
+    if m:
+        from urllib.parse import unquote
+        return unquote(m.group(1))
+    # If it looks like a raw calendar ID (contains @), use as-is
+    if '@' in raw:
+        return raw
+    # Fallback: return as-is (could be "primary" or similar)
+    return raw
+
+
 def _get_google_flow() -> Flow:
     client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
     client_secret = os.environ.get("GOOGLE_CLIENT_SECRET", "")

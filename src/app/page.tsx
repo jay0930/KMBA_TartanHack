@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import EmojiTimeline from '@/components/EmojiTimeline';
-import { backendFetch, fetchCurrentUser } from '@/lib/api';
+import { fetchCurrentUser } from '@/lib/api';
 
 const GRADIENTS = [
   'linear-gradient(135deg, #0046FF 0%, #73C8D2 100%)',
@@ -432,7 +432,7 @@ export default function DayFlowFeed() {
                   if (deleting) return;
                   setDeleting(true);
                   try {
-                    await backendFetch(`/api/diary/${selectedDiary.id}`, { method: 'DELETE' });  // direct backend call with X-User-Id
+                    await fetch(`/api/diary/${selectedDiary.id}`, { method: 'DELETE' });
                     setDiaries(prev => prev.filter(d => d.id !== selectedDiary.id));
                     setWeeklyTotal(prev => prev - selectedDiary.total);
                     setConfirmDelete(false);

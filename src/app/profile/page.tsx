@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { backendFetch, fetchCurrentUser } from '@/lib/api';
+import { fetchCurrentUser } from '@/lib/api';
 
 interface ProfileData {
   name: string;
@@ -40,7 +40,7 @@ export default function ProfilePage() {
 
       const fetchProfile = async () => {
         try {
-          const res = await backendFetch('/api/user');
+          const res = await fetch('/api/user');
           const data = await res.json();
           setProfile({
             name: data.name || '',
@@ -76,7 +76,7 @@ export default function ProfilePage() {
         photo_url: profile.photo_url || null,
       };
 
-      const res = await backendFetch('/api/user', {
+      const res = await fetch('/api/user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -333,7 +333,7 @@ export default function ProfilePage() {
                 onClick={async () => {
                   try {
                     // Clear profile in DB
-                    await backendFetch('/api/user', {
+                    await fetch('/api/user', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
