@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import type { CalendarEvent, PhotoEvent, TimelineEvent } from '@/lib/types';
 
@@ -11,12 +11,6 @@ const MOCK_CALENDAR = [
   { time: '12:30', title: 'Lunch with Sarah', location: 'Noodle Bar', emoji: '🍜' },
   { time: '15:00', title: 'Gym Session', location: 'CMU Gym', emoji: '🏋️' },
   { time: '19:00', title: 'Dinner', location: 'Thai Place', emoji: '🍛' },
-];
-
-const MOCK_PHOTO_EVENTS = [
-  { time: '09:15', title: 'Latte art photo', emoji: '📸', source: 'photo' as const },
-  { time: '13:00', title: 'Food photo at lunch', emoji: '📸', source: 'photo' as const },
-  { time: '17:30', title: 'Sunset walk', emoji: '🌅', source: 'photo' as const },
 ];
 
 const MOCK_DIARY = `Today was one of those days where the little moments mattered most. Started with my usual Blue Bottle ritual — there's something about that first sip that sets the tone for everything.
@@ -199,8 +193,8 @@ function CalendarStep({ onNext }: { onNext: (events: CalendarEvent[]) => void })
           {/* Add new event row */}
           <div style={{
             display: 'flex', flexDirection: 'column', gap: 8,
-            padding: '12px 14px', background: '#F5F1DC', borderRadius: 12,
-            border: '1px dashed #73C8D2', marginTop: 4,
+            padding: '12px 14px', background: 'rgba(0, 70, 255, 0.05)', borderRadius: 12,
+            border: '1px dashed #0046FF', marginTop: 4,
           }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: '#0046FF', marginBottom: 2 }}>
               + Add an event
@@ -288,12 +282,39 @@ function CalendarStep({ onNext }: { onNext: (events: CalendarEvent[]) => void })
 
 // ─── STEP 2: PHOTOS ───
 function PhotoStep({ onNext }: { onNext: (photos: PhotoEvent[]) => void }) {
-  const [photos, setPhotos] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [previews, setPreviews] = useState<{ url: string; time: number }[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzed, setAnalyzed] = useState(false);
 
-  const handleUpload = () => {
-    setPhotos(['latte.jpg', 'lunch.jpg', 'sunset.jpg']);
+  const MOCK_CAPTIONS = [
+    { emoji: '☕', caption: 'Morning coffee at Blue Bottle' },
+    { emoji: '🍜', caption: 'Lunch with Sarah at Noodle Bar' },
+    { emoji: '🌅', caption: 'Sunset walk by the river' },
+  ];
+
+  const formatFileTime = (ts: number) => {
+    const d = new Date(ts);
+    const h = d.getHours();
+    const m = d.getMinutes().toString().padStart(2, '0');
+    return `${h}:${m}`;
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const newItems = Array.from(files).map(f => ({
+      url: URL.createObjectURL(f),
+      time: f.lastModified,
+    }));
+    setPreviews(prev =>
+      [...prev, ...newItems]
+        .sort((a, b) => a.time - b.time)
+        .slice(0, 10)
+    );
+    // reset input so same file can be re-selected
+    e.target.value = '';
+    // auto-start analysis
     setAnalyzing(true);
     setTimeout(() => {
       setAnalyzing(false);
@@ -301,8 +322,28 @@ function PhotoStep({ onNext }: { onNext: (photos: PhotoEvent[]) => void }) {
     }, 2000);
   };
 
+  const handleRemove = (idx: number) => {
+    URL.revokeObjectURL(previews[idx].url);
+    const updated = previews.filter((_, i) => i !== idx);
+    setPreviews(updated);
+    if (updated.length === 0) {
+      setAnalyzing(false);
+      setAnalyzed(false);
+    }
+  };
+
   return (
     <div style={{ padding: '0 20px' }}>
+      {/* Hidden native file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        onChange={handleFileChange}
+        style={{ display: 'none' }}
+      />
+
       <div className="font-[family-name:var(--font-outfit)]" style={{ fontSize: 22, fontWeight: 700, color: '#1a1a1a', marginBottom: 4 }}>
         Got any photos from today?
       </div>
@@ -310,9 +351,9 @@ function PhotoStep({ onNext }: { onNext: (photos: PhotoEvent[]) => void }) {
         Photos help AI understand your day better
       </div>
 
-      {photos.length === 0 ? (
+      {previews.length === 0 ? (
         <div
-          onClick={handleUpload}
+          onClick={() => fileInputRef.current?.click()}
           className="hover:border-[#73C8D2]"
           style={{
             border: '2px dashed #d1d5db', borderRadius: 16,
@@ -326,47 +367,88 @@ function PhotoStep({ onNext }: { onNext: (photos: PhotoEvent[]) => void }) {
         </div>
       ) : (
         <div>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-            {photos.map((_, i) => (
-              <div key={i} style={{
-                flex: 1, height: 80, borderRadius: 12,
-                background: ['linear-gradient(135deg,#0046FF,#73C8D2)', 'linear-gradient(135deg,#FF9013,#F5F1DC)', 'linear-gradient(135deg,#73C8D2,#0046FF)'][i],
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                animation: `fade-in-up 0.3s ease-out ${i * 0.1}s both`,
-              }}>
-                <span style={{ fontSize: 24 }}>{['☕', '🍜', '🌅'][i]}</span>
-              </div>
-            ))}
-          </div>
-
           {analyzing ? (
-            <div style={{ textAlign: 'center', padding: 20 }}>
-              <div style={{ fontSize: 14, color: '#73C8D2', fontWeight: 500 }}>
+            <div style={{ textAlign: 'center', padding: 20, marginBottom: 16 }}>
+              <div style={{ fontSize: 14, color: '#0046FF', fontWeight: 500 }}>
                 🔍 AI is analyzing your photos...
               </div>
               <div style={{ marginTop: 8, height: 4, background: '#f3f4f6', borderRadius: 2, overflow: 'hidden' }}>
-                <div style={{ height: '100%', background: '#73C8D2', borderRadius: 2, width: '60%', animation: 'loading-bar 2s ease-in-out infinite' }} />
+                <div style={{ height: '100%', background: '#0046FF', borderRadius: 2, width: '60%', animation: 'loading-bar 2s ease-in-out infinite' }} />
               </div>
             </div>
           ) : analyzed ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <div style={{ width: 8, height: 8, borderRadius: 4, background: '#0046FF' }} />
-                <span style={{ fontSize: 13, color: '#0046FF', fontWeight: 600 }}>3 moments detected from photos</span>
+                <span style={{ fontSize: 13, color: '#0046FF', fontWeight: 600 }}>
+                  {previews.length} moment{previews.length !== 1 ? 's' : ''} detected from photos
+                </span>
               </div>
-              {MOCK_PHOTO_EVENTS.map((e, i) => (
-                <div key={i} style={{
-                  display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '8px 14px', background: '#F5F1DC', borderRadius: 10,
-                  animation: `fade-in-up 0.3s ease-out ${i * 0.08}s both`,
-                }}>
-                  <span style={{ fontSize: 16 }}>{e.emoji}</span>
-                  <span style={{ fontSize: 13, color: '#555', flex: 1 }}>{e.title}</span>
-                  <span style={{ fontSize: 12, color: '#73C8D2', fontWeight: 600 }}>{e.time}</span>
-                </div>
-              ))}
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                style={{ fontSize: 12, color: '#0046FF', fontWeight: 600, cursor: 'pointer' }}
+              >
+                + Add more
+              </div>
             </div>
           ) : null}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
+            {previews.map((photo, i) => {
+              const mock = MOCK_CAPTIONS[i % MOCK_CAPTIONS.length];
+              return (
+                <div key={i} style={{
+                  borderRadius: 16, overflow: 'hidden',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                  animation: `fade-in-up 0.4s ease-out ${i * 0.12}s both`,
+                }}>
+                  {/* Photo area — 4:3 aspect ratio with real image */}
+                  <div style={{
+                    width: '100%', aspectRatio: '4/3', position: 'relative',
+                    backgroundImage: `url(${photo.url})`,
+                    backgroundSize: 'cover', backgroundPosition: 'center',
+                  }}>
+                    {/* Remove button */}
+                    <div
+                      onClick={() => handleRemove(i)}
+                      style={{
+                        position: 'absolute', top: 10, left: 10,
+                        width: 28, height: 28, borderRadius: 14,
+                        background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        cursor: 'pointer', color: 'white', fontSize: 14, fontWeight: 700,
+                      }}
+                    >
+                      ×
+                    </div>
+                    {/* Time badge from file metadata */}
+                    {analyzed && (
+                      <div style={{
+                        position: 'absolute', top: 12, right: 12,
+                        background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(4px)',
+                        borderRadius: 8, padding: '4px 10px',
+                        fontSize: 12, fontWeight: 700, color: '#0046FF',
+                      }}>
+                        {formatFileTime(photo.time)}
+                      </div>
+                    )}
+                  </div>
+                  {/* Caption */}
+                  {analyzed && (
+                    <div style={{
+                      padding: '10px 14px',
+                      background: 'white',
+                      fontSize: 13, fontWeight: 500, color: '#555',
+                      display: 'flex', alignItems: 'center', gap: 6,
+                    }}>
+                      <span style={{ fontSize: 14 }}>{mock.emoji}</span>
+                      {mock.caption}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -382,7 +464,19 @@ function PhotoStep({ onNext }: { onNext: (photos: PhotoEvent[]) => void }) {
           Skip
         </button>
         <button
-          onClick={() => onNext(MOCK_PHOTO_EVENTS)}
+          onClick={() => {
+            const photoEventsFromPreviews: PhotoEvent[] = previews.map((photo, i) => {
+              const mock = MOCK_CAPTIONS[i % MOCK_CAPTIONS.length];
+              return {
+                time: formatFileTime(photo.time),
+                title: mock.caption,
+                emoji: mock.emoji,
+                source: 'photo' as const,
+              };
+            });
+            onNext(photoEventsFromPreviews);
+          }}
+          disabled={!analyzed}
           style={{
             flex: 2, padding: '14px', background: analyzed ? '#0046FF' : '#94a3b8',
             color: 'white', border: 'none', borderRadius: 14,
@@ -471,81 +565,126 @@ function TimelineSpendingStep({
               No events yet. Connect calendar or add manually.
             </div>
           ) : (
-            events.map((event, idx) => {
-              const hour = parseInt(event.time.split(':')[0]);
-              const min = parseInt(event.time.split(':')[1]) || 0;
-              const topPx = ((hour - 6 + min / 60) / 16) * (hours.length * 44);
+            (() => {
+              const CARD_H = 52;
+              // compute top positions
+              const positions = events.map((event) => {
+                const hour = parseInt(event.time.split(':')[0]);
+                const min = parseInt(event.time.split(':')[1]) || 0;
+                return ((hour - 6 + min / 60) / 16) * (hours.length * 44);
+              });
+              // assign columns for overlapping cards
+              const cols: number[] = new Array(events.length).fill(0);
+              const totalCols: number[] = new Array(events.length).fill(1);
+              // group overlapping events
+              const groups: number[][] = [];
+              const visited = new Set<number>();
+              for (let i = 0; i < events.length; i++) {
+                if (visited.has(i)) continue;
+                const group = [i];
+                visited.add(i);
+                for (let j = i + 1; j < events.length; j++) {
+                  if (visited.has(j)) continue;
+                  if (group.some(g => Math.abs(positions[j] - positions[g]) < CARD_H)) {
+                    group.push(j);
+                    visited.add(j);
+                  }
+                }
+                groups.push(group);
+              }
+              for (const group of groups) {
+                group.sort((a, b) => positions[a] - positions[b]);
+                if (group.length <= 1) continue;
+                // max 2 columns — alternate left/right
+                for (let c = 0; c < group.length; c++) {
+                  cols[group[c]] = c % 2;
+                  totalCols[group[c]] = 2;
+                }
+              }
 
-              return (
-                <div
-                  key={idx}
-                  style={{
-                    position: 'absolute',
-                    top: topPx,
-                    left: 4,
-                    right: 0,
-                    animation: `fade-in-up 0.3s ease-out ${idx * 0.06}s both`,
-                  }}
-                >
-                  <div style={{
-                    position: 'absolute', left: -9, top: 14,
-                    width: 10, height: 10, borderRadius: 5,
-                    background: event.source === 'photo' ? '#73C8D2' : '#0046FF',
-                    border: '2px solid white',
-                    boxShadow: '0 0 0 2px ' + (event.source === 'photo' ? '#73C8D2' : '#0046FF'),
-                  }} />
+              return events.map((event, idx) => {
+                const topPx = positions[idx];
+                const col = cols[idx];
+                const total_c = totalCols[idx];
+                const widthPct = total_c > 1 ? `${100 / total_c}%` : '100%';
+                const leftPct = total_c > 1 ? `${(col / total_c) * 100}%` : '0%';
+                const isMulti = total_c > 1;
 
-                  <div style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '10px 12px', marginLeft: 8,
-                    background: 'white', borderRadius: 14,
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-                  }}>
-                    <span style={{ fontSize: 20, flexShrink: 0 }}>{event.emoji}</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#333', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {event.title}
-                      </div>
-                      <div style={{ fontSize: 11, color: '#999' }}>{event.time}</div>
-                    </div>
-
-                    {editingIdx === idx ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <span style={{ fontSize: 13, color: '#666' }}>$</span>
-                        <input
-                          autoFocus
-                          type="number"
-                          value={editValue}
-                          onChange={(e) => setEditValue(e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && handleSaveSpending(idx)}
-                          onBlur={() => handleSaveSpending(idx)}
-                          style={{
-                            width: 52, padding: '4px 6px', fontSize: 13,
-                            border: '1.5px solid #0046FF', borderRadius: 8,
-                            outline: 'none', textAlign: 'right',
-                          }}
-                          placeholder="0"
-                        />
-                      </div>
-                    ) : (
-                      <div
-                        onClick={() => { setEditingIdx(idx); setEditValue(event.spending ? String(event.spending) : ''); }}
-                        style={{
-                          padding: '4px 10px', borderRadius: 8, cursor: 'pointer',
-                          fontSize: 13, fontWeight: 600, flexShrink: 0,
-                          background: event.spending ? '#FFF3E0' : '#f9fafb',
-                          color: event.spending ? '#FF9013' : '#ccc',
-                          border: event.spending ? '1px solid #FFE0B2' : '1px dashed #ddd',
-                          transition: 'all 0.15s',
-                        }}
-                      >
-                        {event.spending ? `$${event.spending.toFixed(2)}` : '+ $'}
-                      </div>
+                return (
+                  <div
+                    key={idx}
+                    style={{
+                      position: 'absolute',
+                      top: topPx,
+                      left: `calc(4px + ${leftPct})`,
+                      width: `calc(${widthPct} - 4px)`,
+                      animation: `fade-in-up 0.3s ease-out ${idx * 0.06}s both`,
+                    }}
+                  >
+                    {col === 0 && (
+                      <div style={{
+                        position: 'absolute', left: -9, top: 14,
+                        width: 10, height: 10, borderRadius: 5,
+                        background: event.source === 'photo' ? '#73C8D2' : '#0046FF',
+                        border: '2px solid white',
+                        boxShadow: '0 0 0 2px ' + (event.source === 'photo' ? '#73C8D2' : '#0046FF'),
+                      }} />
                     )}
+
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: isMulti ? 6 : 10,
+                      padding: isMulti ? '8px 8px' : '10px 12px',
+                      marginLeft: col === 0 ? 8 : 2,
+                      marginRight: col === total_c - 1 ? 0 : 2,
+                      background: 'white', borderRadius: 14,
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                    }}>
+                      <span style={{ fontSize: isMulti ? 16 : 20, flexShrink: 0 }}>{event.emoji}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: isMulti ? 12 : 13, fontWeight: 600, color: '#333', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {event.title}
+                        </div>
+                        <div style={{ fontSize: isMulti ? 10 : 11, color: '#999' }}>{event.time}</div>
+                      </div>
+
+                      {editingIdx === idx ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{ fontSize: 13, color: '#666' }}>$</span>
+                          <input
+                            autoFocus
+                            type="number"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleSaveSpending(idx)}
+                            onBlur={() => handleSaveSpending(idx)}
+                            style={{
+                              width: isMulti ? 44 : 52, padding: '4px 6px', fontSize: 13,
+                              border: '1.5px solid #0046FF', borderRadius: 8,
+                              outline: 'none', textAlign: 'right',
+                            }}
+                            placeholder="0"
+                          />
+                        </div>
+                      ) : (
+                        <div
+                          onClick={() => { setEditingIdx(idx); setEditValue(event.spending ? String(event.spending) : ''); }}
+                          style={{
+                            padding: isMulti ? '3px 6px' : '4px 10px', borderRadius: 8, cursor: 'pointer',
+                            fontSize: isMulti ? 11 : 13, fontWeight: 600, flexShrink: 0,
+                            background: event.spending ? 'rgba(0, 70, 255, 0.05)' : '#f9fafb',
+                            color: event.spending ? '#0046FF' : '#ccc',
+                            border: event.spending ? '1px solid rgba(0, 70, 255, 0.2)' : '1px dashed #ddd',
+                            transition: 'all 0.15s',
+                          }}
+                        >
+                          {event.spending ? `$${event.spending.toFixed(2)}` : '+ $'}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              );
-            })
+                );
+              });
+            })()
           )}
         </div>
       </div>
@@ -586,9 +725,12 @@ function TimelineSpendingStep({
 // ─── STEP 4: DIARY RESULT ───
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
+const DIARY_MAX_LENGTH = 1000;
+
 function DiaryResult({ events, onDone }: { events: TimelineEvent[]; onDone: () => void }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [editingDiary, setEditingDiary] = useState(false);
   const [diary, setDiary] = useState<{
     text: string;
     insight: string;
@@ -697,15 +839,56 @@ function DiaryResult({ events, onDone }: { events: TimelineEvent[]; onDone: () =
         ))}
       </div>
 
-      {/* Diary text */}
-      <div style={{
-        padding: 20, background: '#fffdf7', borderRadius: 16,
-        border: '1px solid #fef3c7', marginBottom: 16,
-        fontSize: 14, lineHeight: 1.8, color: '#444',
-        fontFamily: "Georgia, 'Times New Roman', serif",
-        whiteSpace: 'pre-line',
-      }}>
-        {diary!.text}
+      {/* Diary text — tap to edit */}
+      <div style={{ position: 'relative', marginBottom: 16 }}>
+        {editingDiary ? (
+          <div style={{ position: 'relative' }}>
+            <textarea
+              autoFocus
+              value={diary!.text}
+              onChange={(e) => {
+                if (e.target.value.length <= DIARY_MAX_LENGTH) {
+                  setDiary(prev => prev ? { ...prev, text: e.target.value } : prev);
+                }
+              }}
+              onBlur={() => setEditingDiary(false)}
+              style={{
+                width: '100%', minHeight: 200, padding: 20,
+                background: '#fffdf7', borderRadius: 16,
+                border: '1.5px solid #0046FF',
+                fontSize: 14, lineHeight: 1.8, color: '#444',
+                fontFamily: "Georgia, 'Times New Roman', serif",
+                resize: 'vertical', outline: 'none',
+              }}
+            />
+            <div style={{
+              textAlign: 'right', fontSize: 11, padding: '4px 8px',
+              color: diary!.text.length > DIARY_MAX_LENGTH * 0.9 ? '#FF9013' : '#bbb',
+            }}>
+              {diary!.text.length}/{DIARY_MAX_LENGTH}
+            </div>
+          </div>
+        ) : (
+          <div
+            onClick={() => setEditingDiary(true)}
+            style={{
+              padding: 20, background: '#fffdf7', borderRadius: 16,
+              border: '1px solid #fef3c7',
+              fontSize: 14, lineHeight: 1.8, color: '#444',
+              fontFamily: "Georgia, 'Times New Roman', serif",
+              whiteSpace: 'pre-line', cursor: 'pointer',
+              transition: 'border-color 0.2s',
+            }}
+          >
+            {diary!.text}
+            <div style={{
+              marginTop: 10, fontSize: 11, color: '#bbb',
+              display: 'flex', alignItems: 'center', gap: 4,
+            }}>
+              <span>✏️</span> Tap to edit
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Spending insight */}
