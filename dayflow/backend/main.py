@@ -2,6 +2,7 @@ import asyncio
 import base64
 
 from fastapi import FastAPI, File, Query, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dedalus_labs import AsyncDedalus, DedalusRunner
 
@@ -18,6 +19,14 @@ from db import (
 )
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ── Dedalus client ──────────────────────────────────────────────────
 dedalus_client = AsyncDedalus()  # uses DEDALUS_API_KEY env var
