@@ -1,4 +1,4 @@
-import { runner } from '@/lib/dedalus';
+import { runner, type RunResult } from '@/lib/dedalus';
 import { NextResponse } from 'next/server';
 
 export async function GET(request: Request) {
@@ -8,8 +8,8 @@ export async function GET(request: Request) {
   const response = await runner.run({
     input: `${date}에 찍은 사진들의 메타데이터(시간, 위치, 썸네일 URL)를 가져와줘`,
     model: "anthropic/claude-sonnet-4-5-20250929",
-    mcp_servers: ["google-photos"],
-  });
+    mcpServers: ["google-photos"],
+  }) as RunResult;
 
-  return NextResponse.json({ photos: response.final_output });
+  return NextResponse.json({ photos: response.finalOutput });
 }

@@ -1,4 +1,4 @@
-import { runner } from '@/lib/dedalus';
+import { runner, type RunResult } from '@/lib/dedalus';
 import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
@@ -12,7 +12,7 @@ export async function POST(request: Request) {
 
 JSON 배열 형태로 반환: [{ "time": "HH:MM", "event": "설명", "photoUrl": "url 또는 null" }]`,
     model: "anthropic/claude-sonnet-4-5-20250929",
-  });
+  }) as RunResult;
 
-  return NextResponse.json({ timeline: response.final_output });
+  return NextResponse.json({ timeline: response.finalOutput });
 }
