@@ -134,6 +134,9 @@ def _clean_timeline_row(diary_id: str, event: dict) -> dict:
 async def save_timeline_events(diary_id: str, events: list[dict]) -> list:
     """Bulk-insert timeline events linked to a diary entry."""
     rows = [_clean_timeline_row(diary_id, e) for e in events]
+    for r in rows:
+        if "spending" in r:
+            r["spending"] = round(r["spending"])
     result = supabase.table("timeline_events").insert(rows).execute()
     return result.data
 
@@ -155,6 +158,8 @@ async def add_manual_event(diary_id: str, event: dict) -> dict:
     """Insert a single manual timeline event."""
     row = _clean_timeline_row(diary_id, {**event, "source": "manual", "is_deleted": False})
     row.setdefault("spending", 0)
+    if "spending" in row:
+        row["spending"] = round(row["spending"])
     result = supabase.table("timeline_events").insert(row).execute()
     return result.data[0]
 
