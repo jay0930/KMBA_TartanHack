@@ -173,20 +173,32 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
     }
   };
 
-  const handleAddEvent = () => {
+  const handleAddEvent = async () => {
     if (!newTitle.trim() || !newTime.trim()) return;
-    const newEvent: CalendarEvent = {
-      time: newTime,
-      title: newTitle,
-      location: newLocation || '',
-      emoji: '📌',
-    };
-    const newIdx = events.length;
-    setEvents(prev => [...prev, newEvent]);
-    setChecked(prev => new Set(prev).add(newIdx));
+    const title = newTitle.trim();
+    const time = newTime.trim();
+    const location = newLocation || '';
     setNewTitle('');
     setNewLocation('');
     setNewTime('');
+
+    // Get AI emoji first, then add event
+    let emoji = '📌';
+    try {
+      const res = await backendFetch('/api/emoji/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ titles: [title] }),
+      });
+      const data = await res.json();
+      if (data.emojis?.[0]) emoji = data.emojis[0];
+    } catch {
+      // fallback
+    }
+
+    const newIdx = events.length;
+    setEvents(prev => [...prev, { time, title, location, emoji }]);
+    setChecked(prev => new Set(prev).add(newIdx));
   };
 
   const checkedCount = checked.size;
