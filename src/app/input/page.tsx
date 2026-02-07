@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import type { CalendarEvent, PhotoEvent, TimelineEvent } from '@/lib/types';
-import { backendFetch, fetchCurrentUser } from '@/lib/api';
+import { fetchCurrentUser } from '@/lib/api';
 
 import { BACKEND_URL } from '@/lib/backend-url';
 
@@ -59,7 +59,7 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
     const init = async () => {
       // Load saved calendar URL from profile
       try {
-        const res = await backendFetch(`/api/user`);
+        const res = await fetch(`/api/user`);
         const data = await res.json();
         if (data.calendar_url) {
           setCalendarUrl(data.calendar_url);
@@ -88,7 +88,7 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
       const today = new Date().toISOString().split('T')[0];
       const params = new URLSearchParams({ date: today });
       if (calId) params.set('calendar_id', calId);
-      const res = await backendFetch(`/api/calendar/fetch?${params}`);
+      const res = await fetch(`/api/calendar/fetch?${params}`);
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.detail || `HTTP ${res.status}`);
@@ -123,12 +123,12 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
     setError(null);
     try {
       // Check if already authenticated
-      const statusRes = await backendFetch(`/api/auth/google/status?user_id=${userId}`);
+      const statusRes = await fetch(`/api/auth/google-status`);
       const status = await statusRes.json();
       if (status.connected) {
         // Already connected — save URL to profile and fetch events
         if (calId) {
-          await backendFetch(`/api/user`, {
+          await fetch(`/api/user`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ calendar_url: calendarUrl }),
@@ -141,7 +141,7 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
       // Save calendar ID to localStorage so we can use it after redirect
       if (calId) {
         localStorage.setItem('dayflow_calendar_id', calId);
-        await backendFetch(`/api/user`, {
+        await fetch(`/api/user`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ calendar_url: calendarUrl }),
@@ -187,7 +187,7 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
     // Get AI emoji first, then add event
     let emoji = '📌';
     try {
-      const res = await backendFetch('/api/emoji/assign', {
+      const res = await fetch('/api/emoji', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ titles: [title] }),
@@ -511,7 +511,7 @@ function PhotoStep({ onNext }: { onNext: (photos: PhotoEvent[]) => void }) {
       const formData = new FormData();
       items.forEach(item => formData.append('files', item.file));
       const today = new Date().toISOString().split('T')[0];
-      const res = await backendFetch(`/api/photos/upload?date=${today}`, {
+      const res = await fetch(`/api/photos/upload?date=${today}`, {
         method: 'POST',
         body: formData,
       });
@@ -1059,7 +1059,7 @@ function DiaryResult({ events, onDone, userId }: { events: TimelineEvent[]; onDo
         },
       };
       console.log('[DEBUG] Saving diary with payload:', payload);
-      const res = await backendFetch('/api/diary/save', {
+      const res = await fetch('/api/diary/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
