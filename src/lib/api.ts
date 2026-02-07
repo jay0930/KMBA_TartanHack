@@ -1,27 +1,21 @@
-import { supabase } from './supabase';
-
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001';
-
 /**
- * Get the current Supabase auth token for backend API calls.
- */
-export async function getAuthToken(): Promise<string | null> {
-  const { data: { session } } = await supabase.auth.getSession();
-  return session?.access_token ?? null;
-}
-
-/**
- * Fetch wrapper that automatically attaches the Supabase JWT
- * as an Authorization header for backend API calls.
+ * Fetch wrapper that routes all backend API calls through the Next.js proxy.
+ * The proxy reads the cookie, adds X-User-Id, and forwards to FastAPI.
+ *
+ * Usage: backendFetch('/api/user') → fetch('/api/proxy/api/user')
  */
 export async function backendFetch(
   path: string,
   init?: RequestInit,
 ): Promise<Response> {
-  const token = await getAuthToken();
-  const headers = new Headers(init?.headers);
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
-  }
-  return fetch(`${BACKEND_URL}${path}`, { ...init, headers });
+  return fetch(`/api/proxy${path}`, init);
+}
+
+/**
+ * Get current user from cookie auth. Returns null if not logged in.
+ */
+export async function fetchCurrentUser() {
+  const res = await fetch('/api/auth/me');
+  const { user } = await res.json();
+  return user as { id: string; email: string; name: string; profile_image: string | null } | null;
 }

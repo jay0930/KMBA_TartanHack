@@ -6,7 +6,6 @@ import logging
 import os
 from uuid import UUID
 
-import jwt
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -78,9 +77,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-# ── JWT Authentication ────────────────────────────────────────────
-
-SUPABASE_JWT_SECRET = os.environ.get("SUPABASE_JWT_SECRET", "")
+# ── Simple Auth (hackathon mode) ─────────────────────────────────
 
 
 def _validate_uuid(value: str, field_name: str) -> str:
@@ -93,36 +90,10 @@ def _validate_uuid(value: str, field_name: str) -> str:
 
 
 async def get_current_user(request: Request) -> str:
-    """Extract and verify user_id from Supabase Auth JWT.
-
-    Returns the authenticated user's UUID string.
-    Raises 401 if token is missing/invalid.
-    """
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
-
-    token = auth_header[7:]  # strip "Bearer "
-
-    if not SUPABASE_JWT_SECRET:
-        raise HTTPException(status_code=500, detail="SUPABASE_JWT_SECRET not configured")
-
-    try:
-        payload = jwt.decode(
-            token,
-            SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
-            audience="authenticated",
-        )
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-    user_id = payload.get("sub")
+    """Extract user_id from X-User-Id header (hackathon simple auth)."""
+    user_id = request.headers.get("X-User-Id", "")
     if not user_id:
-        raise HTTPException(status_code=401, detail="Token missing user ID")
-
+        raise HTTPException(status_code=401, detail="Missing X-User-Id header")
     return user_id
 
 
@@ -319,16 +290,24 @@ async def google_auth_start(user_id: str = Query(...)):
 @app.get("/api/auth/google/callback")
 async def google_auth_callback(code: str = Query(...), state: str = Query(default="")):
     """Handle Google OAuth callback — exchange code for token, save to DB, redirect."""
-    flow = _get_google_flow()
-    flow.fetch_token(code=code)
-    creds = flow.credentials
+    try:
+        flow = _get_google_flow()
+        logger.info("Google OAuth callback: exchanging code for token (user_id=%s)", state)
+        flow.fetch_token(code=code)
+        creds = flow.credentials
+        logger.info("Google OAuth: token exchange successful")
 
-    # state contains the user_id passed from the auth start
-    user_id = state
-    if user_id:
-        await _save_user_credentials(user_id, creds)
+        # state contains the user_id passed from the auth start
+        user_id = state
+        if user_id:
+            await _save_user_credentials(user_id, creds)
+            logger.info("Google OAuth: credentials saved for user %s", user_id)
 
-    return RedirectResponse(url=f"{FRONTEND_URL}/input?calendar=connected")
+        return RedirectResponse(url=f"{FRONTEND_URL}/input?calendar=connected")
+    except Exception as e:
+        logger.warning("Google OAuth callback error: %s: %s", type(e).__name__, e)
+        # Redirect to frontend with error instead of showing raw JSON
+        return RedirectResponse(url=f"{FRONTEND_URL}/input?calendar=error")
 
 
 @app.get("/api/auth/google/status")
@@ -566,13 +545,23 @@ async def fetch_calendar(
         day_start = datetime(d.year, d.month, d.day, tzinfo=zone)
         day_end = day_start + timedelta(days=1)
 
-        result = service.events().list(
-            calendarId=cal_id,
-            timeMin=day_start.isoformat(),
-            timeMax=day_end.isoformat(),
-            singleEvents=True,
-            orderBy="startTime",
-        ).execute()
+        def _fetch_events(cid: str):
+            return service.events().list(
+                calendarId=cid,
+                timeMin=day_start.isoformat(),
+                timeMax=day_end.isoformat(),
+                singleEvents=True,
+                orderBy="startTime",
+            ).execute()
+
+        try:
+            result = _fetch_events(cal_id)
+        except Exception:
+            if cal_id != "primary":
+                logger.warning("Calendar ID '%s' not found, falling back to 'primary'", cal_id)
+                result = _fetch_events("primary")
+            else:
+                raise
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Google Calendar API error: {str(e)}")
 

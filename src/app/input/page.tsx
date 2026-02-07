@@ -3,8 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import type { CalendarEvent, PhotoEvent, TimelineEvent } from '@/lib/types';
-import { supabase } from '@/lib/supabase';
-import { backendFetch } from '@/lib/api';
+import { backendFetch, fetchCurrentUser } from '@/lib/api';
 import { getEmojiForEvent } from '@/lib/emoji';
 import { extractExifTime } from '@/lib/exif';
 
@@ -1008,13 +1007,9 @@ function DiaryResult({ events, onDone, userId }: { events: TimelineEvent[]; onDo
   useEffect(() => {
     const generateDiary = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-        if (token) headers['Authorization'] = `Bearer ${token}`;
         const res = await fetch('/api/diary', {
           method: 'POST',
-          headers,
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ timeline: events }),
         });
 
@@ -1256,12 +1251,12 @@ export default function DayFlowInput() {
   const steps = ['Calendar', 'Photos', 'Timeline', 'Diary'];
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
+    fetchCurrentUser().then((user) => {
+      if (!user) {
         router.replace('/login');
         return;
       }
-      setUserId(session.user.id);
+      setUserId(user.id);
       setAuthReady(true);
     });
   }, [router]);

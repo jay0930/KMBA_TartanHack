@@ -1,13 +1,16 @@
 import { NextResponse } from 'next/server';
 import { callDedalus, extractText } from '@/lib/dedalus';
+import { getCurrentUser } from '@/lib/auth';
 import type { TimelineEvent } from '@/lib/types';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001';
 
 export async function POST(request: Request) {
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: 'Not logged in' }, { status: 401 });
+
   try {
     const { timeline }: { timeline: TimelineEvent[] } = await request.json();
-
     const totalSpending = timeline.reduce((sum, item) => sum + (item.spending || 0), 0);
 
     const diaryPrompt = `Here is the user's timeline for today:
@@ -71,7 +74,7 @@ Return ONLY a JSON object (no markdown, no code fences):
     try {
       const saveRes = await fetch(`${BACKEND_URL}/api/diary/save`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-User-Id': user.id },
         body: JSON.stringify({
           date: today,
           diary: {
@@ -112,12 +115,14 @@ Return ONLY a JSON object (no markdown, no code fences):
   }
 }
 
-export async function GET(request: Request) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const limit = searchParams.get('limit') || '30';
+export async function GET() {
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: 'Not logged in' }, { status: 401 });
 
-    const res = await fetch(`${BACKEND_URL}/api/diary/history?limit=${limit}`);
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/diary/history?limit=30`, {
+      headers: { 'X-User-Id': user.id },
+    });
     if (!res.ok) {
       return NextResponse.json({ error: `Backend error: ${res.status}` }, { status: res.status });
     }

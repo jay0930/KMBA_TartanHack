@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
-import { backendFetch } from '@/lib/api';
+import { backendFetch, fetchCurrentUser } from '@/lib/api';
 
 interface ProfileData {
   name: string;
@@ -30,13 +29,12 @@ export default function ProfilePage() {
 
   // Check auth and load profile data from backend on mount
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
+    fetchCurrentUser().then((currentUser) => {
+      if (!currentUser) {
         router.replace('/login');
         return;
       }
-      const uid = session.user.id;
-      setUserId(uid);
+      setUserId(currentUser.id);
 
       const fetchProfile = async () => {
         try {

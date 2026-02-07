@@ -1,18 +1,17 @@
 import { NextResponse } from 'next/server';
+import { getCurrentUser } from '@/lib/auth';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001';
 
 export async function POST(request: Request) {
-  const authHeader = request.headers.get('Authorization') || '';
-  // Forward multipart form data directly to FastAPI backend
-  const formData = await request.formData();
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: 'Not logged in' }, { status: 401 });
 
-  const headers: Record<string, string> = {};
-  if (authHeader) headers['Authorization'] = authHeader;
+  const formData = await request.formData();
 
   const res = await fetch(`${BACKEND_URL}/api/photos/analyze`, {
     method: 'POST',
-    headers,
+    headers: { 'X-User-Id': user.id },
     body: formData,
   });
   const data = await res.json();

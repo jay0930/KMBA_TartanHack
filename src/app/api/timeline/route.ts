@@ -1,17 +1,17 @@
 import { NextResponse } from 'next/server';
+import { getCurrentUser } from '@/lib/auth';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001';
 
 export async function PUT(request: Request) {
-  const authHeader = request.headers.get('Authorization') || '';
-  const body = await request.json();
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: 'Not logged in' }, { status: 401 });
 
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (authHeader) headers['Authorization'] = authHeader;
+  const body = await request.json();
 
   const res = await fetch(`${BACKEND_URL}/api/timeline/spending`, {
     method: 'PUT',
-    headers,
+    headers: { 'Content-Type': 'application/json', 'X-User-Id': user.id },
     body: JSON.stringify(body),
   });
   const data = await res.json();
