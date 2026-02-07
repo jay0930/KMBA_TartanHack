@@ -754,6 +754,22 @@ def _extract_exif(raw: bytes) -> dict:
     return result
 
 
+@app.post("/api/emoji/assign")
+async def assign_emoji(
+    body: dict,
+    user_id: str = Depends(get_current_user),
+):
+    """Assign emojis to a list of event titles via LLM."""
+    titles = body.get("titles", [])
+    if not titles or not isinstance(titles, list):
+        raise HTTPException(status_code=400, detail="'titles' must be a non-empty list")
+    if len(titles) > 20:
+        raise HTTPException(status_code=400, detail="Maximum 20 titles at once")
+    events = [{"title": t} for t in titles]
+    emojis = await _assign_emojis(events)
+    return {"emojis": emojis}
+
+
 # ── Photo analysis (Dedalus Vision) ─────────────────────────────────
 
 PHOTO_ANALYSIS_PROMPT = """\

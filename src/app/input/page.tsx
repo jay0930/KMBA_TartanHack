@@ -179,20 +179,34 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
     }
   };
 
-  const handleAddEvent = () => {
+  const handleAddEvent = async () => {
     if (!newTitle.trim() || !newTime.trim()) return;
-    const newEvent: CalendarEvent = {
-      time: newTime,
-      title: newTitle,
-      location: newLocation || '',
-      emoji: '📌',
-    };
+    const title = newTitle.trim();
+    const time = newTime.trim();
+    const location = newLocation || '';
+
+    // Add immediately with placeholder emoji
     const newIdx = events.length;
+    const newEvent: CalendarEvent = { time, title, location, emoji: '⏳' };
     setEvents(prev => [...prev, newEvent]);
     setChecked(prev => new Set(prev).add(newIdx));
     setNewTitle('');
     setNewLocation('');
     setNewTime('');
+
+    // Fetch proper emoji from backend
+    try {
+      const res = await backendFetch('/api/emoji/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ titles: [title] }),
+      });
+      const data = await res.json();
+      const emoji = data.emojis?.[0] || '📌';
+      setEvents(prev => prev.map((e, i) => i === newIdx ? { ...e, emoji } : e));
+    } catch {
+      setEvents(prev => prev.map((e, i) => i === newIdx ? { ...e, emoji: '📌' } : e));
+    }
   };
 
   const checkedCount = checked.size;
