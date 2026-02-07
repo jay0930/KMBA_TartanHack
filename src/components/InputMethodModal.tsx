@@ -40,8 +40,8 @@ export default function InputMethodModal({ isOpen, onClose }: InputMethodModalPr
         {/* Main option: Chat */}
         <div
           onClick={() => { onClose(); router.push('/chat'); }}
-          className="rounded-2xl p-5 mb-3 cursor-pointer text-white transition-transform hover:scale-[1.02]"
-          style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)' }}
+          className="rounded-2xl p-5 mb-3 cursor-pointer transition-transform hover:scale-[1.02]"
+          style={{ color: 'white', background: 'linear-gradient(135deg, #0046FF 0%, #73C8D2 100%)' }}
         >
           <div className="flex items-center gap-3">
             <span className="text-[28px]">💬</span>
@@ -57,20 +57,20 @@ export default function InputMethodModal({ isOpen, onClose }: InputMethodModalPr
           <div
             onClick={() => { onClose(); router.push('/photos'); }}
             className="flex-1 rounded-2xl p-4 cursor-pointer text-center transition-transform hover:scale-[1.02]"
-            style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}
+            style={{ background: '#F5F1DC', border: '1px solid #73C8D2' }}
           >
             <div className="text-2xl mb-1.5">📸</div>
-            <div className="text-sm font-semibold text-green-800">Photos</div>
-            <div className="text-[11px] text-green-400">Upload images</div>
+            <div className="text-sm font-semibold" style={{ color: '#0046FF' }}>Photos</div>
+            <div className="text-[11px]" style={{ color: '#73C8D2' }}>Upload images</div>
           </div>
           <div
             onClick={() => { onClose(); router.push('/calendar'); }}
             className="flex-1 rounded-2xl p-4 cursor-pointer text-center transition-transform hover:scale-[1.02]"
-            style={{ background: '#fefce8', border: '1px solid #fde68a' }}
+            style={{ background: '#F5F1DC', border: '1px solid #FF9013' }}
           >
             <div className="text-2xl mb-1.5">📅</div>
-            <div className="text-sm font-semibold text-yellow-800">Calendar</div>
-            <div className="text-[11px] text-yellow-400">Import events</div>
+            <div className="text-sm font-semibold" style={{ color: '#FF9013' }}>Calendar</div>
+            <div className="text-[11px]" style={{ color: '#FF9013', opacity: 0.7 }}>Import events</div>
           </div>
         </div>
       </div>

@@ -3,96 +3,22 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import EmojiTimeline from '@/components/EmojiTimeline';
-
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+import { backendFetch, fetchCurrentUser } from '@/lib/api';
 
 const GRADIENTS = [
-  'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-  'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-  'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)',
-  'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)',
-  'linear-gradient(135deg, #89f7fe 0%, #66a6ff 100%)',
-  'linear-gradient(135deg, #96fbc4 0%, #f9f586 100%)',
+  'linear-gradient(135deg, #0046FF 0%, #73C8D2 100%)',
+  'linear-gradient(135deg, #FF9013 0%, #F5F1DC 100%)',
+  'linear-gradient(135deg, #73C8D2 0%, #0046FF 100%)',
+  'linear-gradient(135deg, #F5F1DC 0%, #73C8D2 100%)',
+  'linear-gradient(135deg, #0046FF 0%, #FF9013 100%)',
+  'linear-gradient(135deg, #73C8D2 0%, #FF9013 100%)',
 ];
 
-const MOCK_DIARIES = [
-  {
-    id: '1',
-    date: 'Thursday, Feb 5',
-    emojis: ['☕', '🍜', '📚', '🍺'],
-    times: ['8am', '12pm', '3pm', '7pm'],
-    preview: 'A cozy day of coffee and catching up with old friends at the noodle place...',
-    total: 47.5,
-    hasPhoto: true,
-    photoUrl: '/images/grid-1.png',
-    photoGradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-    primaryEmoji: '☕',
-  },
-  {
-    id: '2',
-    date: 'Wednesday, Feb 4',
-    emojis: ['🏃', '☕', '💻', '🍕', '🎬'],
-    times: ['7am', '9am', '10am', '1pm', '7pm'],
-    preview: 'Started with a run along the river, then powered through a long coding session...',
-    total: 32.0,
-    hasPhoto: true,
-    photoUrl: '/images/209895_00_2x.jpg',
-    photoGradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-    primaryEmoji: '🏃',
-  },
-  {
-    id: '3',
-    date: 'Tuesday, Feb 3',
-    emojis: ['🧘', '🥗', '🎨', '🍷'],
-    times: ['7am', '12pm', '4pm', '8pm'],
-    preview: 'Morning yoga cleared my mind, then spent the afternoon painting at the studio...',
-    total: 28.0,
-    hasPhoto: true,
-    photoUrl: '/images/grid-2.png',
-    photoGradient: 'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)',
-    primaryEmoji: '🧘',
-  },
-  {
-    id: '4',
-    date: 'Monday, Feb 2',
-    emojis: ['☕', '💼', '🍔', '🎮', '🛁'],
-    times: ['8am', '9am', '1pm', '6pm', '10pm'],
-    preview: 'Back to the grind — meetings all morning, grabbed burgers with the team after...',
-    total: 53.25,
-    hasPhoto: true,
-    photoUrl: '/images/grid-4.png',
-    photoGradient: 'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)',
-    primaryEmoji: '💼',
-  },
-  {
-    id: '5',
-    date: 'Sunday, Feb 1',
-    emojis: ['🥞', '📖', '🚶', '🍣'],
-    times: ['10am', '1pm', '4pm', '7pm'],
-    preview: 'Lazy brunch with pancakes, read half a novel, then evening sushi date downtown...',
-    total: 61.5,
-    hasPhoto: true,
-    photoUrl: '/images/grid-6.png',
-    photoGradient: 'linear-gradient(135deg, #89f7fe 0%, #66a6ff 100%)',
-    primaryEmoji: '📖',
-  },
-  {
-    id: '6',
-    date: 'Saturday, Jan 31',
-    emojis: ['🏔️', '📸', '☕', '🍲'],
-    times: ['9am', '12pm', '3pm', '7pm'],
-    preview: 'Hiked up to the overlook and took amazing photos, warmed up with hot pot after...',
-    total: 39.0,
-    hasPhoto: true,
-    photoUrl: '/images/grid-8.png',
-    photoGradient: 'linear-gradient(135deg, #96fbc4 0%, #f9f586 100%)',
-    primaryEmoji: '🏔️',
-  },
-];
 
 interface MockDiary {
   id: string;
   date: string;
+  rawDate?: string;
   emojis: string[];
   times: string[];
   preview: string;
@@ -104,6 +30,21 @@ interface MockDiary {
   diaryText?: string;
   spendingInsight?: string;
   tomorrowSuggestion?: string;
+}
+
+const WEEK_COLORS = ['#0046FF', '#73C8D2', '#FF9013', '#0046FF', '#73C8D2', '#FF9013', '#0046FF'];
+
+function getWeekDates(): string[] {
+  const today = new Date();
+  const day = today.getDay(); // 0=Sun, 1=Mon
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() + mondayOffset);
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    return d.toISOString().split('T')[0];
+  });
 }
 
 function TodayCard({ onClick }: { onClick: () => void }) {
@@ -119,11 +60,11 @@ function TodayCard({ onClick }: { onClick: () => void }) {
       onClick={onClick}
       className="cursor-pointer transition-transform"
       style={{
-        border: '2px dashed rgba(59, 130, 246, 0.4)',
+        border: '2px dashed rgba(0, 70, 255, 0.3)',
         borderRadius: 20,
         padding: '32px 24px',
         textAlign: 'center',
-        background: 'linear-gradient(135deg, rgba(59,130,246,0.03) 0%, rgba(147,51,234,0.03) 100%)',
+        background: 'linear-gradient(135deg, rgba(0,70,255,0.04) 0%, rgba(115,200,210,0.04) 100%)',
         animation: 'pulse-border 3s ease-in-out infinite',
       }}
     >
@@ -132,7 +73,7 @@ function TodayCard({ onClick }: { onClick: () => void }) {
         How was your day today?
       </div>
       <div className="text-[13px] text-gray-400 mb-4">{formatted}</div>
-      <div className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-blue-500 text-white text-sm font-medium">
+      <div className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl text-sm font-medium" style={{ background: '#0046FF', color: 'white' }}>
         Start Writing
       </div>
     </div>
@@ -202,63 +143,97 @@ function DiaryCard({
 export default function DayFlowFeed() {
   const router = useRouter();
   const [selectedDiary, setSelectedDiary] = useState<MockDiary | null>(null);
-  const [diaries, setDiaries] = useState<MockDiary[]>(MOCK_DIARIES);
-  const [weeklyTotal, setWeeklyTotal] = useState(121.75);
+  const [diaries, setDiaries] = useState<MockDiary[]>([]);
+  const [weeklyTotal, setWeeklyTotal] = useState(0);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [userName, setUserName] = useState<string>('');
+  const [authReady, setAuthReady] = useState(false);
 
   useEffect(() => {
-    fetch(`${BACKEND_URL}/api/diary/history?limit=30`)
-      .then(res => res.json())
-      .then((data: Array<{
-        id: string;
-        date: string;
-        diary_text?: string;
-        diary_preview?: string;
-        total_spending?: number;
-        primary_emoji?: string;
-        photo_url?: string;
-        spending_insight?: string;
-        tomorrow_suggestion?: string;
-      }>) => {
-        if (data && data.length > 0) {
-          const mapped: MockDiary[] = data.map((d, i) => {
-            const dateObj = new Date(d.date + 'T12:00:00');
-            const formatted = dateObj.toLocaleDateString('en-US', {
-              weekday: 'long', month: 'short', day: 'numeric',
+    fetchCurrentUser().then((user) => {
+      if (!user) {
+        router.replace('/login');
+        return;
+      }
+      setUserName(user.name || user.email?.split('@')[0] || '');
+      setAuthReady(true);
+
+      fetch('/api/diary')
+        .then(res => res.json())
+        .then((data: Array<{
+          id: string;
+          date: string;
+          diary_text?: string;
+          diary_preview?: string;
+          total_spending?: number;
+          primary_emoji?: string;
+          photo_url?: string;
+          spending_insight?: string;
+          tomorrow_suggestion?: string;
+          timeline_events?: Array<{ emoji?: string; time?: string }>;
+        }>) => {
+          if (data && data.length > 0) {
+            const mapped: MockDiary[] = data.map((d, i) => {
+              const dateObj = new Date(d.date + 'T12:00:00');
+              const formatted = dateObj.toLocaleDateString('en-US', {
+                weekday: 'long', month: 'short', day: 'numeric',
+              });
+              const tlEmojis = d.timeline_events?.map(e => e.emoji || '📝').filter(Boolean) || [];
+              const tlTimes = d.timeline_events?.map(e => e.time || '').filter(Boolean) || [];
+              return {
+                id: d.id,
+                date: formatted,
+                rawDate: d.date,
+                emojis: tlEmojis.length > 0 ? tlEmojis : [d.primary_emoji || '📝'],
+                times: tlTimes,
+                preview: d.diary_preview || d.diary_text?.slice(0, 100) || 'No preview available',
+                total: d.total_spending || 0,
+                hasPhoto: !!d.photo_url,
+                photoUrl: d.photo_url,
+                photoGradient: GRADIENTS[i % GRADIENTS.length],
+                primaryEmoji: d.primary_emoji || '📝',
+                diaryText: d.diary_text,
+                spendingInsight: d.spending_insight,
+                tomorrowSuggestion: d.tomorrow_suggestion,
+              };
             });
-            return {
-              id: d.id,
-              date: formatted,
-              emojis: [d.primary_emoji || '📝'],
-              times: [],
-              preview: d.diary_preview || d.diary_text?.slice(0, 100) || 'No preview available',
-              total: d.total_spending || 0,
-              hasPhoto: !!d.photo_url,
-              photoUrl: d.photo_url,
-              photoGradient: GRADIENTS[i % GRADIENTS.length],
-              primaryEmoji: d.primary_emoji || '📝',
-              diaryText: d.diary_text,
-              spendingInsight: d.spending_insight,
-              tomorrowSuggestion: d.tomorrow_suggestion,
-            };
-          });
-          setDiaries(mapped);
-          const total = mapped.reduce((s, d) => s + d.total, 0);
-          setWeeklyTotal(total);
-        }
-      })
-      .catch(() => {
-        // Keep mock data on error
-      });
-  }, []);
+            setDiaries(mapped);
+            const weekDates = getWeekDates();
+            const weekTotal = mapped
+              .filter(d => d.rawDate && weekDates.includes(d.rawDate))
+              .reduce((s, d) => s + d.total, 0);
+            setWeeklyTotal(weekTotal);
+          } else {
+            setDiaries([]);
+          }
+        })
+        .catch(() => {});
+    });
+  }, [router]);
+
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    router.replace('/login');
+  };
+
+
+  if (!authReady) {
+    return (
+      <div className="max-w-[393px] mx-auto min-h-dvh flex items-center justify-center" style={{ background: '#ffffff' }}>
+        <div className="text-gray-400 text-sm">Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <>
-      <div className="max-w-[393px] mx-auto min-h-dvh relative" style={{ background: '#fafaf9' }}>
+      <div className="max-w-[393px] mx-auto min-h-dvh relative" style={{ background: '#ffffff' }}>
         {/* Header */}
         <div
           className="px-5 pb-3 flex justify-between items-center sticky top-0 z-10"
           style={{
-            background: 'rgba(250,250,249,0.85)',
+            background: 'rgba(255,255,255,0.85)',
             backdropFilter: 'blur(12px)',
             paddingTop: 'calc(12px + var(--safe-top))',
           }}
@@ -266,11 +241,15 @@ export default function DayFlowFeed() {
           <div className="text-2xl font-bold text-[#1a1a1a] font-[family-name:var(--font-outfit)]">
             DayFlow
           </div>
-          <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center cursor-pointer text-base"
-            style={{ background: 'rgba(0,0,0,0.05)' }}
-          >
-            ☀️
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500 font-medium capitalize">{userName}</span>
+            <button
+              onClick={() => router.push('/profile')}
+              className="w-9 h-9 rounded-full bg-white flex items-center justify-center text-gray-700 text-lg hover:bg-gray-100 transition-colors shadow-sm border border-gray-200"
+              title="Profile"
+            >
+              👤
+            </button>
           </div>
         </div>
 
@@ -298,7 +277,7 @@ export default function DayFlowFeed() {
           style={{
             padding: '40px 16px 0',
             paddingBottom: 'calc(12px + var(--safe-bottom))',
-            background: 'linear-gradient(to top, rgba(250,250,249,1) 60%, rgba(250,250,249,0))',
+            background: 'linear-gradient(to top, rgba(255,255,255,1) 60%, rgba(255,255,255,0))',
           }}
         >
           <div className="bg-white rounded-2xl px-5 py-3 flex justify-between items-center shadow-md pointer-events-auto cursor-pointer">
@@ -308,20 +287,30 @@ export default function DayFlowFeed() {
                 ${weeklyTotal.toFixed(2)}
               </div>
             </div>
-            <div className="flex gap-0.5">
-              {['#3b82f6', '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6'].map(
-                (c, i) => (
-                  <div
-                    key={i}
-                    className="rounded opacity-70"
-                    style={{
-                      width: 8,
-                      height: 12 + ((i * 7 + 3) % 24),
-                      background: c,
-                    }}
-                  />
-                )
-              )}
+            <div className="flex gap-0.5 items-end" style={{ height: 36 }}>
+              {(() => {
+                const weekDates = getWeekDates();
+                const dailySpending = weekDates.map(date => {
+                  const diary = diaries.find(d => d.rawDate === date);
+                  return diary ? diary.total : 0;
+                });
+                const maxSpending = Math.max(...dailySpending, 1);
+                return weekDates.map((_, i) => {
+                  if (dailySpending[i] === 0) return null;
+                  const barHeight = Math.max(6, (dailySpending[i] / maxSpending) * 36);
+                  return (
+                    <div
+                      key={i}
+                      className="rounded opacity-70"
+                      style={{
+                        width: 8,
+                        height: barHeight,
+                        background: WEEK_COLORS[i],
+                      }}
+                    />
+                  );
+                });
+              })()}
             </div>
           </div>
         </div>
@@ -366,28 +355,100 @@ export default function DayFlowFeed() {
             </div>
 
             {/* Diary Text */}
-            <div className="text-sm leading-relaxed text-gray-600 mb-4 p-4 bg-[#fafaf9] rounded-xl whitespace-pre-line">
+            <div className="text-sm leading-relaxed text-gray-600 mb-4 p-4 bg-[#FAFAF8] rounded-xl whitespace-pre-line">
               {selectedDiary.diaryText || `${selectedDiary.preview} It was one of those days where everything just flows naturally. The kind of day you want to remember.`}
             </div>
 
             {/* Spending */}
-            <div className="flex justify-between items-center p-3 px-4 bg-green-50 rounded-xl mb-3">
-              <span className="text-[13px] text-green-800">Total Spending</span>
-              <span className="text-lg font-bold text-green-800">
+            <div className="flex justify-between items-center p-3 px-4 rounded-xl mb-3" style={{ background: 'rgba(255,144,19,0.08)' }}>
+              <span className="text-[13px]" style={{ color: '#FF9013' }}>Total Spending</span>
+              <span className="text-lg font-bold" style={{ color: '#FF9013' }}>
                 ${selectedDiary.total.toFixed(2)}
               </span>
             </div>
 
             {/* Spending Insight */}
             {selectedDiary.spendingInsight && (
-              <div className="p-3 px-4 bg-green-50 rounded-xl text-[13px] text-green-800 mb-3">
-                💰 {selectedDiary.spendingInsight}
+              <div className="p-3 px-4 rounded-xl text-[13px] mb-3" style={{ background: 'rgba(0,70,255,0.06)', color: '#0046FF' }}>
+                📊 {selectedDiary.spendingInsight}
               </div>
             )}
 
             {/* Tomorrow Tip */}
-            <div className="p-3 px-4 bg-blue-50 rounded-xl text-[13px] text-blue-800">
-              💡 {selectedDiary.tomorrowSuggestion || "Tomorrow's tip: Try making coffee at home — save $4.50 and enjoy the ritual!"}
+            <div className="p-3 px-4 rounded-xl text-[13px]" style={{ background: 'rgba(115,200,210,0.12)', color: '#0e7490' }}>
+              🌱 {selectedDiary.tomorrowSuggestion || "Tomorrow's tip: Try making coffee at home — save $4.50 and enjoy the ritual!"}
+            </div>
+
+            {/* Delete */}
+            <button
+              onClick={() => setConfirmDelete(true)}
+              disabled={deleting}
+              className="w-full mt-6 py-3 rounded-xl text-[13px] font-medium transition-colors"
+              style={{
+                background: 'transparent',
+                color: deleting ? '#ccc' : '#ef4444',
+                border: '1px solid',
+                borderColor: deleting ? '#e5e7eb' : '#fecaca',
+                cursor: deleting ? 'default' : 'pointer',
+              }}
+            >
+              {deleting ? 'Deleting...' : 'Delete this diary'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {confirmDelete && selectedDiary && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center"
+          onClick={() => setConfirmDelete(false)}
+        >
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-[6px]" />
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-[80%] max-w-[320px] bg-white rounded-2xl overflow-hidden"
+            style={{ animation: 'fade-in-up 0.2s ease-out' }}
+          >
+            <div className="p-6 pb-4 text-center">
+              <div className="text-[32px] mb-3">🗑️</div>
+              <div className="text-[15px] font-semibold text-[#1a1a1a] font-[family-name:var(--font-outfit)] mb-1.5">
+                Delete this diary?
+              </div>
+              <div className="text-[13px] text-gray-400 leading-snug">
+                This action cannot be undone. All timeline events and photos will be permanently removed.
+              </div>
+            </div>
+            <div className="flex border-t border-gray-100">
+              <button
+                onClick={() => setConfirmDelete(false)}
+                className="flex-1 py-3.5 text-[14px] font-medium transition-colors"
+                style={{ color: '#0046FF', borderRight: '1px solid #f3f4f6' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (deleting) return;
+                  setDeleting(true);
+                  try {
+                    await backendFetch(`/api/diary/${selectedDiary.id}`, { method: 'DELETE' });  // direct backend call with X-User-Id
+                    setDiaries(prev => prev.filter(d => d.id !== selectedDiary.id));
+                    setWeeklyTotal(prev => prev - selectedDiary.total);
+                    setConfirmDelete(false);
+                    setSelectedDiary(null);
+                  } catch (err) {
+                    console.error('Failed to delete diary:', err);
+                  } finally {
+                    setDeleting(false);
+                  }
+                }}
+                disabled={deleting}
+                className="flex-1 py-3.5 text-[14px] font-medium transition-colors"
+                style={{ color: deleting ? '#ccc' : '#ef4444' }}
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
             </div>
           </div>
         </div>

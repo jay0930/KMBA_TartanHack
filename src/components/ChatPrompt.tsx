@@ -27,8 +27,9 @@ export default function ChatPrompt({ onSend, messages, isLoading }: ChatPromptPr
           <div
             key={i}
             className={`p-3 rounded-lg ${
-              msg.role === 'user' ? 'bg-blue-100 ml-8' : 'bg-gray-100 mr-8'
+              msg.role === 'user' ? 'ml-8' : 'bg-gray-100 mr-8'
             }`}
+            style={msg.role === 'user' ? { background: '#F5F1DC' } : undefined}
           >
             {msg.content}
           </div>
@@ -39,14 +40,15 @@ export default function ChatPrompt({ onSend, messages, isLoading }: ChatPromptPr
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="오늘 하루에 대해 이야기해주세요..."
+          placeholder="Tell me about your day..."
           className="flex-1 px-4 py-2 border rounded-lg"
           disabled={isLoading}
         />
         <button
           type="submit"
           disabled={isLoading}
-          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
+          className="px-4 py-2 rounded-lg disabled:opacity-50 hover:opacity-90"
+          style={{ background: '#0046FF', color: 'white' }}
         >
           <Send size={18} />
         </button>

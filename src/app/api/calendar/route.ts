@@ -1,14 +1,33 @@
-import { runner, type RunResult } from '@/lib/dedalus';
 import { NextResponse } from 'next/server';
+import { getCurrentUser } from '@/lib/auth';
 
-export async function GET() {
-  const today = new Date().toISOString().split('T')[0];
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001';
 
-  const response = await runner.run({
-    input: `오늘(${today}) 캘린더의 모든 일정을 시간순으로 가져와줘. JSON 형태로 반환해줘.`,
-    model: "anthropic/claude-sonnet-4-5-20250929",
-    mcpServers: ["google-calendar"],
-  }) as RunResult;
+export async function GET(request: Request) {
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: 'Not logged in' }, { status: 401 });
 
-  return NextResponse.json({ events: response.finalOutput });
+  const { searchParams } = new URL(request.url);
+  const date = searchParams.get('date') || new Date().toISOString().split('T')[0];
+
+  const res = await fetch(`${BACKEND_URL}/api/calendar/events?date=${date}`, {
+    headers: { 'X-User-Id': user.id },
+  });
+  const data = await res.json();
+  return NextResponse.json(data);
+}
+
+export async function POST(request: Request) {
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: 'Not logged in' }, { status: 401 });
+
+  const body = await request.json();
+
+  const res = await fetch(`${BACKEND_URL}/api/calendar/events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-User-Id': user.id },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  return NextResponse.json(data);
 }

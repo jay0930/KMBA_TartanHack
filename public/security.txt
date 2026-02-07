@@ -1,0 +1,7 @@
+Contact: security@dayflow.app
+Expires: 2027-12-31T23:59:59.000Z
+Preferred-Languages: en
+Canonical: https://dayflow.app/.well-known/security.txt
+
+# Security Policy
+# If you discover a security vulnerability, please email us at security@dayflow.app
