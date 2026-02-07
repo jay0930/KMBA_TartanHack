@@ -16,30 +16,9 @@ PHOTO_BUCKET = "photos"
 # ── Test ────────────────────────────────────────────────────────────
 
 async def test_connection() -> dict:
-    """Insert a test row into diaries and read it back to verify the connection."""
-    test_date = "1970-01-01"
-
-    # insert a test row
-    insert_result = (
-        supabase.table("diaries")
-        .insert({"date": test_date, "diary_text": "connection test"})
-        .execute()
-    )
-    row_id = insert_result.data[0]["id"]
-
-    # read it back
-    row = (
-        supabase.table("diaries")
-        .select("*")
-        .eq("id", row_id)
-        .limit(1)
-        .execute()
-    )
-
-    # clean up
-    supabase.table("diaries").delete().eq("id", row_id).execute()
-
-    return {"ok": True, "row": row.data[0] if row.data else None}
+    """Simple read-only check to verify Supabase connectivity."""
+    result = supabase.table("diaries").select("id").limit(1).execute()
+    return {"ok": True, "count": len(result.data)}
 
 
 # ── Diaries ─────────────────────────────────────────────────────────
@@ -137,11 +116,27 @@ async def delete_diary(diary_id: str) -> bool:
     return True
 
 
+TIMELINE_FIELDS = {"time", "emoji", "title", "description", "location", "source", "source_id",
+                    "spending", "is_deleted", "photo_url", "photo_analysis", "sort_order"}
+
+
+def _clean_timeline_row(diary_id: str, event: dict) -> dict:
+    """Build a timeline_events row with only known DB columns, dropping Nones."""
+    row = {"diary_id": diary_id}
+    for k, v in event.items():
+        if k in TIMELINE_FIELDS and v is not None:
+            row[k] = v
+    return row
+
+
 # ── Timeline Events ─────────────────────────────────────────────────
 
 async def save_timeline_events(diary_id: str, events: list[dict]) -> list:
     """Bulk-insert timeline events linked to a diary entry."""
-    rows = [{"diary_id": diary_id, **event} for event in events]
+    rows = [_clean_timeline_row(diary_id, e) for e in events]
+    for r in rows:
+        if "spending" in r:
+            r["spending"] = round(r["spending"])
     result = supabase.table("timeline_events").insert(rows).execute()
     return result.data
 
@@ -161,13 +156,10 @@ async def get_active_timeline(diary_id: str) -> list:
 
 async def add_manual_event(diary_id: str, event: dict) -> dict:
     """Insert a single manual timeline event."""
-    row = {
-        "diary_id": diary_id,
-        **event,
-        "source": "manual",
-        "spending": event.get("spending", 0),
-        "is_deleted": False,
-    }
+    row = _clean_timeline_row(diary_id, {**event, "source": "manual", "is_deleted": False})
+    row.setdefault("spending", 0)
+    if "spending" in row:
+        row["spending"] = round(row["spending"])
     result = supabase.table("timeline_events").insert(row).execute()
     return result.data[0]
 

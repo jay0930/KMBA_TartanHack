@@ -43,7 +43,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_origins=["http://localhost:3000", "http://localhost:3001", "https://kmbatartanhack-production.up.railway.app"],
     allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
@@ -226,6 +226,7 @@ class SaveCalendarRequest(BaseModel):
 
 
 class UserProfile(BaseModel):
+    email: str | None = None
     name: str | None = None
     gender: str | None = None
     age: int | None = None
@@ -266,11 +267,17 @@ async def add_timeline_event(body: ManualEventRequest):
 
     # Generate emoji if missing or generic default
     if not event_data.get("emoji") or event_data["emoji"] in ("📌", "📅", "📝"):
-        emojis = await _assign_emojis([event_data])
-        event_data["emoji"] = emojis[0]
+        try:
+            emojis = await _assign_emojis([event_data])
+            event_data["emoji"] = emojis[0]
+        except Exception:
+            event_data["emoji"] = "📌"
 
-    row = await add_manual_event(body.diary_id, event_data)
-    return {"event": row}
+    try:
+        row = await add_manual_event(body.diary_id, event_data)
+        return {"event": row}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.delete("/api/timeline/{event_id}")
@@ -425,10 +432,7 @@ async def google_auth_status():
     return {"connected": False}
 
 
-DEFAULT_CALENDAR_ID = os.getenv(
-    "GOOGLE_CALENDAR_ID",
-    "eddba18e124499fab104f55803fa60b4c6914e18730200e1533d0ef75c76d4d2@group.calendar.google.com",
-)
+DEFAULT_CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", "primary")
 
 
 @app.get("/api/calendar/fetch")
@@ -768,6 +772,7 @@ async def get_user_profile(user_id: str = Query(...)):
     if not user:
         return {
             "user_id": user_id,
+            "email": None,
             "name": None,
             "gender": None,
             "age": None,

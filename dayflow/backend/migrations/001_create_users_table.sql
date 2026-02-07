@@ -1,10 +1,10 @@
--- Drop table if it exists (to start fresh)
+-- Drop old users table
 DROP TABLE IF EXISTS users CASCADE;
 
--- Create users table for user profiles (linked to auth.users)
+-- Create users table: user_id (auth UUID) is the primary key
 CREATE TABLE users (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID UNIQUE NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email TEXT,
   name TEXT,
   gender TEXT,
   age INTEGER,
@@ -14,10 +14,7 @@ CREATE TABLE users (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Create index on user_id for fast lookups
-CREATE INDEX idx_users_user_id ON users(user_id);
-
--- Create a trigger to automatically update updated_at timestamp
+-- Auto-update updated_at on row change
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -30,13 +27,3 @@ CREATE TRIGGER update_users_updated_at
 BEFORE UPDATE ON users
 FOR EACH ROW
 EXECUTE FUNCTION update_updated_at_column();
-
--- Add helpful comments
-COMMENT ON TABLE users IS 'User profile information linked to auth.users';
-COMMENT ON COLUMN users.id IS 'Row UUID (auto-generated)';
-COMMENT ON COLUMN users.user_id IS 'Auth user UUID from auth.users(id)';
-COMMENT ON COLUMN users.name IS 'User full name';
-COMMENT ON COLUMN users.gender IS 'User gender (Male/Female/Other/Prefer not to say)';
-COMMENT ON COLUMN users.age IS 'User age in years';
-COMMENT ON COLUMN users.calendar_url IS 'Google Calendar URL or ID';
-COMMENT ON COLUMN users.photo_url IS 'Profile photo URL (from Supabase Storage)';
