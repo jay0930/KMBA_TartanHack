@@ -6,15 +6,6 @@ import type { CalendarEvent, PhotoEvent, TimelineEvent } from '@/lib/types';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001';
 
-// ─── MOCK DATA ───
-const MOCK_CALENDAR = [
-  { time: '08:30', title: 'Morning Coffee', location: 'Blue Bottle Coffee', emoji: '☕' },
-  { time: '10:00', title: 'Team Standup', location: 'Zoom', emoji: '💻' },
-  { time: '12:30', title: 'Lunch with Sarah', location: 'Noodle Bar', emoji: '🍜' },
-  { time: '15:00', title: 'Gym Session', location: 'CMU Gym', emoji: '🏋️' },
-  { time: '19:00', title: 'Dinner', location: 'Thai Place', emoji: '🍛' },
-];
-
 // ─── STEP INDICATOR ───
 function StepBar({ current, steps }: { current: number; steps: string[] }) {
   return (
@@ -39,21 +30,39 @@ function StepBar({ current, steps }: { current: number; steps: string[] }) {
 function CalendarStep({ onNext }: { onNext: (events: CalendarEvent[]) => void }) {
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [checked, setChecked] = useState<Set<number>>(new Set());
   const [newTitle, setNewTitle] = useState('');
   const [newLocation, setNewLocation] = useState('');
   const [newTime, setNewTime] = useState('');
 
-  const handleConnect = () => {
+  const handleConnect = async () => {
     setLoading(true);
-    setTimeout(() => {
-      setEvents(MOCK_CALENDAR);
-      // All checked by default
-      setChecked(new Set(MOCK_CALENDAR.map((_, i) => i)));
+    setError(null);
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const res = await fetch(`${BACKEND_URL}/api/calendar/fetch?date=${today}`);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      const fetched: CalendarEvent[] = (data.events || []).map((e: any) => ({
+        time: e.time || '12:00',
+        title: e.title || 'Untitled',
+        location: e.location || '',
+        emoji: e.emoji || '📅',
+      }));
+      setEvents(fetched);
+      setChecked(new Set(fetched.map((_: any, i: number) => i)));
       setConnected(true);
+    } catch (err: any) {
+      console.error('Calendar fetch failed:', err);
+      setError(err.message || 'Failed to connect to Google Calendar');
+    } finally {
       setLoading(false);
-    }, 1500);
+    }
   };
 
   const toggleCheck = (idx: number) => {
@@ -116,6 +125,28 @@ function CalendarStep({ onNext }: { onNext: (events: CalendarEvent[]) => void })
             style={{ width: 140, height: 140, objectFit: 'contain', marginBottom: 16, borderRadius: 16 }}
           />
           <div style={{ fontSize: 14, color: '#666' }}>Connecting to Google Calendar...</div>
+        </div>
+      ) : !connected && error ? (
+        <div>
+          <div style={{
+            padding: '16px 20px', marginBottom: 16,
+            background: '#FEF2F2', borderRadius: 12,
+            border: '1px solid #FECACA',
+          }}>
+            <div style={{ fontSize: 13, color: '#DC2626', fontWeight: 600, marginBottom: 4 }}>
+              Could not connect to Google Calendar
+            </div>
+            <div style={{ fontSize: 12, color: '#991B1B' }}>{error}</div>
+            <div
+              onClick={handleConnect}
+              style={{
+                marginTop: 8, fontSize: 12, color: '#0046FF',
+                cursor: 'pointer', textDecoration: 'underline',
+              }}
+            >
+              Try again
+            </div>
+          </div>
         </div>
       ) : !connected ? (
         <div

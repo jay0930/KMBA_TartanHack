@@ -110,6 +110,11 @@ class CalendarEvent(BaseModel):
     calendar_id: str | None = None  # Google event ID for dedup
 
 
+class CalendarFetchResponse(BaseModel):
+    """Structured output from LLM after reading Google Calendar via MCP."""
+    events: list[CalendarEvent]
+
+
 class ManualEventRequest(BaseModel):
     diary_id: str
     event: TimelineEvent
@@ -274,6 +279,91 @@ async def save_calendar(body: SaveCalendarRequest):
     }
 
 
+@app.get("/api/calendar/fetch")
+async def fetch_calendar(date: str = Query(..., description="Date in YYYY-MM-DD format")):
+    """Fetch Google Calendar events for a date via Dedalus MCP,
+    save to DB, and return them with emojis."""
+
+    prompt = CALENDAR_FETCH_PROMPT.replace("{date}", date)
+
+    try:
+        result = await runner.run(
+            model="anthropic/claude-sonnet-4-5-20250929",
+            input=[{"role": "user", "content": prompt}],
+            mcp_servers=["google-calendar-mcp"],
+            response_format=CalendarFetchResponse,
+            max_steps=5,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to fetch calendar from Dedalus MCP: {str(e)}"
+        )
+
+    # Parse the structured output
+    try:
+        if isinstance(result.final_output, str):
+            text = result.final_output.strip()
+            if text.startswith("```"):
+                text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+            parsed = CalendarFetchResponse.model_validate_json(text)
+        else:
+            parsed = result.final_output
+        events = parsed.events
+    except Exception:
+        try:
+            raw = json.loads(result.final_output)
+            if isinstance(raw, list):
+                events = [CalendarEvent(**e) for e in raw]
+            elif isinstance(raw, dict) and "events" in raw:
+                events = [CalendarEvent(**e) for e in raw["events"]]
+            else:
+                events = []
+        except Exception:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to parse calendar events from LLM response"
+            )
+
+    if not events:
+        return {"date": date, "events": [], "diary_id": None, "saved": 0}
+
+    # Generate emojis
+    event_dicts = [e.model_dump() for e in events]
+    emojis = await _assign_emojis(event_dicts)
+    for i, e in enumerate(event_dicts):
+        e["emoji"] = emojis[i] if i < len(emojis) else "📅"
+
+    # Save to DB
+    diary = await get_or_create_diary(date)
+    rows = await db_save_calendar_events(date, event_dicts, diary["id"])
+
+    # Bridge to timeline_events
+    timeline_result = await save_calendar_as_timeline(diary["id"], event_dicts)
+
+    # Return frontend-friendly format
+    frontend_events = []
+    for e in event_dicts:
+        start = e.get("start_time", "")
+        time_str = start[11:16] if len(start) > 16 else start[:5] if len(start) >= 5 else "12:00"
+        frontend_events.append({
+            "time": time_str,
+            "title": e.get("title", ""),
+            "location": e.get("location", ""),
+            "emoji": e.get("emoji", "📅"),
+            "description": e.get("description", ""),
+            "calendar_id": e.get("calendar_id", ""),
+        })
+
+    return {
+        "date": date,
+        "events": frontend_events,
+        "diary_id": diary["id"],
+        "saved": len(rows),
+        "timeline_inserted": timeline_result["inserted"],
+    }
+
+
 @app.get("/api/calendar/events")
 async def get_calendar(date: str = Query(...)):
     """Get all calendar events for a date."""
@@ -286,6 +376,24 @@ async def delete_calendar(date: str = Query(...)):
     """Delete all calendar events for a date (re-import)."""
     await db_delete_calendar_events(date)
     return {"ok": True}
+
+
+# ── Calendar fetch (Dedalus MCP) ──────────────────────────────────
+
+CALENDAR_FETCH_PROMPT = """\
+Fetch all Google Calendar events for the date {date}.
+For each event, extract:
+- title: the event summary/title
+- description: the event description (if any)
+- start_time: start time in ISO 8601 format (e.g., "2026-02-07T10:00:00")
+- end_time: end time in ISO 8601 format (if any)
+- location: event location (if any)
+- all_day: true if it's an all-day event, false otherwise
+- calendar_id: the Google Calendar event ID (for dedup)
+
+Return all events for {date} as a structured list.
+If there are no events, return an empty list.
+"""
 
 
 # ── Emoji generation (Dedalus LLM) ──────────────────────────────────
