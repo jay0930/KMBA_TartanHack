@@ -45,7 +45,7 @@ export type DiaryStyle = 'summary' | 'friendly' | 'emotional' | 'poetic' | 'humo
 
 export interface DiarySettings {
   style: DiaryStyle;
-  language: 'en' | 'ko';
+  language: 'en' | 'auto';
   includeSpending: boolean;
   includeSuggestion: boolean;
   customPrompt?: string;

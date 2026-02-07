@@ -14,10 +14,10 @@ export default function Timeline({ events, onUpdateExpense }: TimelineProps) {
     <div className="space-y-4">
       <h2 className="text-xl font-bold flex items-center gap-2">
         <Clock size={20} />
-        오늘의 타임라인
+        Today&apos;s Timeline
       </h2>
       {events.length === 0 ? (
-        <p className="text-gray-500">아직 일정이 없습니다.</p>
+        <p className="text-gray-500">No events yet.</p>
       ) : (
         <ul className="space-y-3">
           {events.map((event, index) => (
@@ -26,12 +26,12 @@ export default function Timeline({ events, onUpdateExpense }: TimelineProps) {
               <span className="flex-1">{event.title}</span>
               <input
                 type="number"
-                placeholder="금액"
+                placeholder="Amount"
                 value={event.spending || ''}
                 onChange={(e) => onUpdateExpense(index, Number(e.target.value))}
                 className="w-24 px-2 py-1 border rounded text-right"
               />
-              <span className="text-sm text-gray-400">원</span>
+              <span className="text-sm text-gray-400">$</span>
             </li>
           ))}
         </ul>

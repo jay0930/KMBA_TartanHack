@@ -4,7 +4,7 @@ import type { DiarySettings, DiaryStyle } from '@/lib/types';
 
 const COOKIE_NAME = 'dayflow-settings';
 const VALID_STYLES: DiaryStyle[] = ['summary', 'friendly', 'emotional', 'poetic', 'humorous'];
-const VALID_LANGUAGES = ['en', 'ko'] as const;
+const VALID_LANGUAGES = ['en', 'auto'] as const;
 
 const DEFAULT_SETTINGS: DiarySettings = {
   style: 'friendly',

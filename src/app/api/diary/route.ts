@@ -5,9 +5,8 @@ import type { TimelineEvent } from '@/lib/types';
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
 export async function POST(request: Request) {
-  const { timeline, language }: { timeline: TimelineEvent[]; language?: string } = await request.json();
+  const { timeline }: { timeline: TimelineEvent[] } = await request.json();
 
-  const lang = language || 'en';
   const totalSpending = timeline.reduce((sum, item) => sum + (item.spending || 0), 0);
 
   const diaryPrompt = `Here is the user's timeline for today:
@@ -16,7 +15,7 @@ ${JSON.stringify(timeline, null, 2)}
 Total spending: $${totalSpending.toFixed(2)}
 
 Based on this timeline:
-1. Write a warm, personal diary entry ${lang === 'ko' ? 'in Korean' : 'in English'} (150-250 words)
+1. Write a warm, personal diary entry (150-250 words). Write in the SAME language as the user's timeline events above. If the events are in English, write in English. If in Korean, write in Korean. Match the user's language.
 2. Pick a single "primary_emoji" that best represents today's overall mood/theme
 3. Create an "emojis" array — one emoji per timeline event that captures each moment (in chronological order)
 4. Write a one-sentence spending insight

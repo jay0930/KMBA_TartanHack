@@ -48,9 +48,7 @@ Style rules:
 - 150-200 words, keep it fun but not forced`,
   };
 
-  const languageInstruction = settings.language === 'ko'
-    ? '\n\nIMPORTANT: Write the entire diary entry in Korean (한국어). All text must be in Korean.'
-    : '\n\nWrite in English.';
+  const languageInstruction = '\n\nWrite in the SAME language as the user\'s timeline input. If the events are in English, write in English. If in Korean, write in Korean. Match the user\'s language automatically.';
 
   const spendingInstruction = settings.includeSpending
     ? '\n\nInclude a gentle spending insight based on the spending data provided.'

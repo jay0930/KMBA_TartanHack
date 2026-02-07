@@ -40,7 +40,7 @@ export default function ChatPrompt({ onSend, messages, isLoading }: ChatPromptPr
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="오늘 하루에 대해 이야기해주세요..."
+          placeholder="Tell me about your day..."
           className="flex-1 px-4 py-2 border rounded-lg"
           disabled={isLoading}
         />
