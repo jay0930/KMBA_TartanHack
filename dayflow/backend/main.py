@@ -550,7 +550,9 @@ async def fetch_calendar(
         creds.refresh(GoogleRequest())
         await _save_user_credentials(user_id, creds)
 
-    cal_id = calendar_id or DEFAULT_CALENDAR_ID
+    # Extract calendar ID from URL if needed
+    cal_id_raw = calendar_id or DEFAULT_CALENDAR_ID
+    cal_id = _extract_calendar_id(cal_id_raw)
 
     # Fetch events from Google Calendar API
     service = google_build("calendar", "v3", credentials=creds)

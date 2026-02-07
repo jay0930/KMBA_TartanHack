@@ -59,16 +59,17 @@ async def save_diary(date: str, diary_data: dict) -> dict:
     """Save or update a diary entry for a given date.
 
     If diary_data contains an 'id', it upserts by primary key.
-    Otherwise, finds existing diary for the date and updates it, or creates new one.
+    Otherwise, finds existing diary for the date (and user_id) and updates it, or creates new one.
     """
     row = {"date": date, **diary_data}
+    user_id = row.get("user_id")
     if "id" in row:
-        result = supabase.table("diaries").upsert(row).execute()
+        result = supabase.table("diaries").upsert(row, on_conflict="id").execute()
     else:
-        # Check if diary already exists for this date
-        existing = await get_or_create_diary(date)
+        # Check if diary already exists for this date + user
+        existing = await get_or_create_diary(date, user_id=user_id)
         row["id"] = existing["id"]
-        result = supabase.table("diaries").upsert(row).execute()
+        result = supabase.table("diaries").upsert(row, on_conflict="id").execute()
     return result.data[0]
 
 
