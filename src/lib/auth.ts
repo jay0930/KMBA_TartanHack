@@ -28,5 +28,6 @@ export async function getCurrentUser() {
 }
 
 export function setUserCookie(userId: string): string {
-  return `dayflow-user-id=${userId}; Path=/; HttpOnly; Max-Age=${60 * 60 * 24 * 30}; SameSite=Lax`;
+  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  return `dayflow-user-id=${userId}; Path=/; HttpOnly; Max-Age=${60 * 60 * 24 * 30}; SameSite=Lax${secure}`;
 }

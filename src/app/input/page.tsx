@@ -39,6 +39,7 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
   const [newTitle, setNewTitle] = useState('');
   const [newLocation, setNewLocation] = useState('');
   const [newTime, setNewTime] = useState('');
+  const [addingEvent, setAddingEvent] = useState(false);
 
   // Extract calendar ID from Google Calendar embed/share URL
   const extractCalendarId = (url: string): string => {
@@ -174,7 +175,8 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
   };
 
   const handleAddEvent = async () => {
-    if (!newTitle.trim() || !newTime.trim()) return;
+    if (!newTitle.trim() || !newTime.trim() || addingEvent) return;
+    setAddingEvent(true);
     const title = newTitle.trim();
     const time = newTime.trim();
     const location = newLocation || '';
@@ -196,9 +198,12 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
       // fallback
     }
 
-    const newIdx = events.length;
-    setEvents(prev => [...prev, { time, title, location, emoji }]);
-    setChecked(prev => new Set(prev).add(newIdx));
+    setEvents(prev => {
+      const newIdx = prev.length;
+      setChecked(c => new Set(c).add(newIdx));
+      return [...prev, { time, title, location, emoji }];
+    });
+    setAddingEvent(false);
   };
 
   const checkedCount = checked.size;
@@ -443,16 +448,17 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
               />
               <button
                 onClick={handleAddEvent}
+                disabled={addingEvent}
                 style={{
                   width: 64, flexShrink: 0, padding: '8px 0',
-                  background: newTitle.trim() && newTime.trim() ? '#0046FF' : '#d1d5db',
+                  background: addingEvent ? '#94a3b8' : newTitle.trim() && newTime.trim() ? '#0046FF' : '#d1d5db',
                   color: 'white', border: 'none', borderRadius: 8,
                   fontSize: 13, fontWeight: 600,
-                  cursor: newTitle.trim() && newTime.trim() ? 'pointer' : 'default',
+                  cursor: addingEvent || !(newTitle.trim() && newTime.trim()) ? 'default' : 'pointer',
                   transition: 'background 0.15s',
                 }}
               >
-                Add
+                {addingEvent ? '...' : 'Add'}
               </button>
             </div>
           </div>
