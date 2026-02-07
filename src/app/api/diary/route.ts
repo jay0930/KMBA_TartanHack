@@ -5,27 +5,43 @@ import type { TimelineEvent } from '@/lib/types';
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001';
 
 export async function POST(request: Request) {
-  const { timeline }: { timeline: TimelineEvent[] } = await request.json();
+  const { timeline, language }: { timeline: TimelineEvent[]; language?: string } = await request.json();
 
+  const lang = language || 'en';
   const totalSpending = timeline.reduce((sum, item) => sum + (item.spending || 0), 0);
 
-  // Generate diary via Dedalus
-  const diaryPrompt = `다음은 사용자의 오늘 하루 타임라인입니다:
+  const diaryPrompt = `Here is the user's timeline for today:
 ${JSON.stringify(timeline, null, 2)}
 
-총 지출: ${totalSpending}원
+Total spending: $${totalSpending.toFixed(2)}
 
-이 정보를 바탕으로:
-1. 따뜻하고 개인적인 일기를 한국어로 작성해주세요 (200-300자)
-2. 내일을 위한 한 줄 제안을 해주세요
+Based on this timeline:
+1. Write a warm, personal diary entry ${lang === 'ko' ? 'in Korean' : 'in English'} (150-250 words)
+2. Pick a single "primary_emoji" that best represents today's overall mood/theme
+3. Create an "emojis" array — one emoji per timeline event that captures each moment (in chronological order)
+4. Write a one-sentence spending insight
+5. Write a one-sentence positive suggestion for tomorrow
 
-JSON 형태로 반환: { "diary_text": "...", "spending_insight": "...", "tomorrow_suggestion": "...", "total_spending": ${totalSpending} }`;
+Return ONLY a JSON object (no markdown, no code fences):
+{
+  "diary_text": "...",
+  "primary_emoji": "☕",
+  "emojis": ["☕", "🍜", "📚", "🍕"],
+  "spending_insight": "...",
+  "tomorrow_suggestion": "...",
+  "total_spending": ${totalSpending},
+  "diary_preview": "first 100 chars of diary_text..."
+}`;
 
   const response = await callDedalus({
     messages: [{ role: 'user', content: diaryPrompt }],
   });
 
-  const text = extractText(response);
+  let text = extractText(response).trim();
+  // Strip markdown code fences if present
+  if (text.startsWith('```')) {
+    text = text.split('\n').slice(1).join('\n').replace(/```\s*$/, '').trim();
+  }
   let parsed;
   try {
     parsed = JSON.parse(text);
@@ -38,6 +54,17 @@ JSON 형태로 반환: { "diary_text": "...", "spending_insight": "...", "tomorr
     };
   }
 
+  // Ensure primary_emoji and diary_preview exist
+  if (!parsed.primary_emoji) {
+    parsed.primary_emoji = timeline[0]?.emoji || '📝';
+  }
+  if (!parsed.diary_preview) {
+    parsed.diary_preview = (parsed.diary_text || '').slice(0, 100);
+  }
+  if (!parsed.emojis || !Array.isArray(parsed.emojis)) {
+    parsed.emojis = timeline.map((e: TimelineEvent) => e.emoji || '📝');
+  }
+
   // Save to Supabase via FastAPI backend
   const today = new Date().toISOString().split('T')[0];
   const saveRes = await fetch(`${BACKEND_URL}/api/diary/save`, {
@@ -45,10 +72,19 @@ JSON 형태로 반환: { "diary_text": "...", "spending_insight": "...", "tomorr
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       date: today,
-      diary: { ...parsed, timeline },
+      diary: {
+        ...parsed,
+        timeline: timeline.map((e, i) => ({
+          ...e,
+          emoji: parsed.emojis?.[i] || e.emoji || '📝',
+        })),
+      },
     }),
   });
   const saved = await saveRes.json();
+
+  // Attach emojis to the response for frontend
+  saved.emojis = parsed.emojis;
 
   return NextResponse.json(saved);
 }

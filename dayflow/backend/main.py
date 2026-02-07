@@ -47,7 +47,7 @@ class TimelineEvent(BaseModel):
     emoji: str | None = None
     title: str
     description: str | None = None
-    spending: int = 0
+    spending: float = 0
     category: str | None = None
     source: str | None = None
 
@@ -56,7 +56,7 @@ class DiaryOutput(BaseModel):
     diary_text: str | None = None
     spending_insight: str | None = None
     tomorrow_suggestion: str | None = None
-    total_spending: int = 0
+    total_spending: float = 0
     thumb_event_id: str | None = None
     diary_preview: str | None = None
     primary_emoji: str | None = None
@@ -131,11 +131,17 @@ async def update_timeline_spending(body: UpdateSpendingRequest):
 async def save_diary(body: SaveDiaryRequest):
     """Save a complete diary + timeline events to Supabase."""
     diary_fields = body.diary.model_dump(exclude={"timeline"})
+    # Round spending to int for Supabase integer columns
+    if "total_spending" in diary_fields:
+        diary_fields["total_spending"] = round(diary_fields["total_spending"])
     diary_row = await db_save_diary(body.date, diary_fields)
 
     events = []
     if body.diary.timeline:
         event_dicts = [e.model_dump() for e in body.diary.timeline]
+        for ed in event_dicts:
+            if "spending" in ed:
+                ed["spending"] = round(ed["spending"])
         events = await save_timeline_events(diary_row["id"], event_dicts)
 
     return {**diary_row, "timeline_events": events}

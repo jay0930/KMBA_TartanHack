@@ -37,7 +37,7 @@ export async function callDedalus(options: CallDedalusOptions) {
   if (!apiKey) throw new Error('DEDALUS_API_KEY not set');
 
   const body: any = {
-    model: options.model || 'anthropic/claude-sonnet-4',
+    model: options.model || 'anthropic/claude-sonnet-4-5-20250929',
     messages: options.messages,
     max_tokens: options.max_tokens || 2000,
   };
