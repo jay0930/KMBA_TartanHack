@@ -35,10 +35,10 @@ function StepBar({ current, steps }: { current: number; steps: string[] }) {
         <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
           <div style={{
             height: 3, borderRadius: 2,
-            background: i <= current ? '#3b82f6' : '#e5e7eb',
+            background: i <= current ? '#0046FF' : '#e5e7eb',
             transition: 'background 0.4s ease',
           }} />
-          <span style={{ fontSize: 10, color: i <= current ? '#3b82f6' : '#aaa', fontWeight: i === current ? 600 : 400 }}>
+          <span style={{ fontSize: 10, color: i <= current ? '#0046FF' : '#aaa', fontWeight: i === current ? 600 : 400 }}>
             {s}
           </span>
         </div>
@@ -132,7 +132,7 @@ function CalendarStep({ onNext }: { onNext: (events: CalendarEvent[]) => void })
       ) : !connected ? (
         <div
           onClick={handleConnect}
-          className="hover:border-blue-500"
+          className="hover:border-[#73C8D2]"
           style={{
             border: '2px dashed #d1d5db',
             borderRadius: 16,
@@ -150,8 +150,8 @@ function CalendarStep({ onNext }: { onNext: (events: CalendarEvent[]) => void })
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <div style={{ width: 8, height: 8, borderRadius: 4, background: '#22c55e' }} />
-            <span style={{ fontSize: 13, color: '#22c55e', fontWeight: 600 }}>
+            <div style={{ width: 8, height: 8, borderRadius: 4, background: '#0046FF' }} />
+            <span style={{ fontSize: 13, color: '#0046FF', fontWeight: 600 }}>
               Calendar connected — {checkedCount}/{events.length} selected
             </span>
           </div>
@@ -176,7 +176,7 @@ function CalendarStep({ onNext }: { onNext: (events: CalendarEvent[]) => void })
                 <div style={{
                   width: 22, height: 22, borderRadius: 11, flexShrink: 0,
                   border: isChecked ? 'none' : '2px solid #d1d5db',
-                  background: isChecked ? '#3b82f6' : 'white',
+                  background: isChecked ? '#0046FF' : 'white',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   transition: 'all 0.15s',
                 }}>
@@ -191,7 +191,7 @@ function CalendarStep({ onNext }: { onNext: (events: CalendarEvent[]) => void })
                   <div style={{ fontSize: 13, fontWeight: 600, color: '#333' }}>{e.title}</div>
                   <div style={{ fontSize: 11, color: '#999' }}>{e.location}</div>
                 </div>
-                <div style={{ fontSize: 13, color: '#3b82f6', fontWeight: 600 }}>{e.time}</div>
+                <div style={{ fontSize: 13, color: '#0046FF', fontWeight: 600 }}>{e.time}</div>
               </div>
             );
           })}
@@ -199,10 +199,10 @@ function CalendarStep({ onNext }: { onNext: (events: CalendarEvent[]) => void })
           {/* Add new event row */}
           <div style={{
             display: 'flex', flexDirection: 'column', gap: 8,
-            padding: '12px 14px', background: '#f0f9ff', borderRadius: 12,
-            border: '1px dashed #93c5fd', marginTop: 4,
+            padding: '12px 14px', background: '#F5F1DC', borderRadius: 12,
+            border: '1px dashed #73C8D2', marginTop: 4,
           }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#3b82f6', marginBottom: 2 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#0046FF', marginBottom: 2 }}>
               + Add an event
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -244,7 +244,7 @@ function CalendarStep({ onNext }: { onNext: (events: CalendarEvent[]) => void })
                 onClick={handleAddEvent}
                 style={{
                   width: 64, flexShrink: 0,
-                  padding: '8px 0', background: newTitle.trim() && newTime.trim() ? '#3b82f6' : '#d1d5db',
+                  padding: '8px 0', background: newTitle.trim() && newTime.trim() ? '#0046FF' : '#d1d5db',
                   color: 'white', border: 'none', borderRadius: 8,
                   fontSize: 13, fontWeight: 600, cursor: newTitle.trim() && newTime.trim() ? 'pointer' : 'default',
                   transition: 'background 0.15s',
@@ -269,10 +269,10 @@ function CalendarStep({ onNext }: { onNext: (events: CalendarEvent[]) => void })
       {connected && (
         <button
           onClick={() => onNext(events.filter((_, i) => checked.has(i)))}
-          className="hover:bg-blue-600"
+          className="hover:opacity-90"
           style={{
             width: '100%', marginTop: 20, padding: '14px',
-            background: checkedCount > 0 ? '#3b82f6' : '#94a3b8',
+            background: checkedCount > 0 ? '#0046FF' : '#94a3b8',
             color: 'white', border: 'none',
             borderRadius: 14, fontSize: 15, fontWeight: 600,
             cursor: checkedCount > 0 ? 'pointer' : 'default',
@@ -313,7 +313,7 @@ function PhotoStep({ onNext }: { onNext: (photos: PhotoEvent[]) => void }) {
       {photos.length === 0 ? (
         <div
           onClick={handleUpload}
-          className="hover:border-purple-500"
+          className="hover:border-[#73C8D2]"
           style={{
             border: '2px dashed #d1d5db', borderRadius: 16,
             padding: '40px 24px', textAlign: 'center', cursor: 'pointer',
@@ -330,7 +330,7 @@ function PhotoStep({ onNext }: { onNext: (photos: PhotoEvent[]) => void }) {
             {photos.map((_, i) => (
               <div key={i} style={{
                 flex: 1, height: 80, borderRadius: 12,
-                background: ['linear-gradient(135deg,#667eea,#764ba2)', 'linear-gradient(135deg,#f093fb,#f5576c)', 'linear-gradient(135deg,#fa709a,#fee140)'][i],
+                background: ['linear-gradient(135deg,#0046FF,#73C8D2)', 'linear-gradient(135deg,#FF9013,#F5F1DC)', 'linear-gradient(135deg,#73C8D2,#0046FF)'][i],
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 animation: `fade-in-up 0.3s ease-out ${i * 0.1}s both`,
               }}>
@@ -341,28 +341,28 @@ function PhotoStep({ onNext }: { onNext: (photos: PhotoEvent[]) => void }) {
 
           {analyzing ? (
             <div style={{ textAlign: 'center', padding: 20 }}>
-              <div style={{ fontSize: 14, color: '#8b5cf6', fontWeight: 500 }}>
+              <div style={{ fontSize: 14, color: '#73C8D2', fontWeight: 500 }}>
                 🔍 AI is analyzing your photos...
               </div>
               <div style={{ marginTop: 8, height: 4, background: '#f3f4f6', borderRadius: 2, overflow: 'hidden' }}>
-                <div style={{ height: '100%', background: '#8b5cf6', borderRadius: 2, width: '60%', animation: 'loading-bar 2s ease-in-out infinite' }} />
+                <div style={{ height: '100%', background: '#73C8D2', borderRadius: 2, width: '60%', animation: 'loading-bar 2s ease-in-out infinite' }} />
               </div>
             </div>
           ) : analyzed ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <div style={{ width: 8, height: 8, borderRadius: 4, background: '#8b5cf6' }} />
-                <span style={{ fontSize: 13, color: '#8b5cf6', fontWeight: 600 }}>3 moments detected from photos</span>
+                <div style={{ width: 8, height: 8, borderRadius: 4, background: '#0046FF' }} />
+                <span style={{ fontSize: 13, color: '#0046FF', fontWeight: 600 }}>3 moments detected from photos</span>
               </div>
               {MOCK_PHOTO_EVENTS.map((e, i) => (
                 <div key={i} style={{
                   display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '8px 14px', background: '#faf5ff', borderRadius: 10,
+                  padding: '8px 14px', background: '#F5F1DC', borderRadius: 10,
                   animation: `fade-in-up 0.3s ease-out ${i * 0.08}s both`,
                 }}>
                   <span style={{ fontSize: 16 }}>{e.emoji}</span>
                   <span style={{ fontSize: 13, color: '#555', flex: 1 }}>{e.title}</span>
-                  <span style={{ fontSize: 12, color: '#8b5cf6', fontWeight: 600 }}>{e.time}</span>
+                  <span style={{ fontSize: 12, color: '#73C8D2', fontWeight: 600 }}>{e.time}</span>
                 </div>
               ))}
             </div>
@@ -384,7 +384,7 @@ function PhotoStep({ onNext }: { onNext: (photos: PhotoEvent[]) => void }) {
         <button
           onClick={() => onNext(MOCK_PHOTO_EVENTS)}
           style={{
-            flex: 2, padding: '14px', background: analyzed ? '#3b82f6' : '#94a3b8',
+            flex: 2, padding: '14px', background: analyzed ? '#0046FF' : '#94a3b8',
             color: 'white', border: 'none', borderRadius: 14,
             fontSize: 15, fontWeight: 600, cursor: analyzed ? 'pointer' : 'default',
             transition: 'background 0.2s',
@@ -490,9 +490,9 @@ function TimelineSpendingStep({
                   <div style={{
                     position: 'absolute', left: -9, top: 14,
                     width: 10, height: 10, borderRadius: 5,
-                    background: event.source === 'photo' ? '#8b5cf6' : '#3b82f6',
+                    background: event.source === 'photo' ? '#73C8D2' : '#0046FF',
                     border: '2px solid white',
-                    boxShadow: '0 0 0 2px ' + (event.source === 'photo' ? '#8b5cf6' : '#3b82f6'),
+                    boxShadow: '0 0 0 2px ' + (event.source === 'photo' ? '#73C8D2' : '#0046FF'),
                   }} />
 
                   <div style={{
@@ -521,7 +521,7 @@ function TimelineSpendingStep({
                           onBlur={() => handleSaveSpending(idx)}
                           style={{
                             width: 52, padding: '4px 6px', fontSize: 13,
-                            border: '1.5px solid #3b82f6', borderRadius: 8,
+                            border: '1.5px solid #0046FF', borderRadius: 8,
                             outline: 'none', textAlign: 'right',
                           }}
                           placeholder="0"
@@ -533,9 +533,9 @@ function TimelineSpendingStep({
                         style={{
                           padding: '4px 10px', borderRadius: 8, cursor: 'pointer',
                           fontSize: 13, fontWeight: 600, flexShrink: 0,
-                          background: event.spending ? '#f0fdf4' : '#f9fafb',
-                          color: event.spending ? '#16a34a' : '#ccc',
-                          border: event.spending ? '1px solid #bbf7d0' : '1px dashed #ddd',
+                          background: event.spending ? '#FFF3E0' : '#f9fafb',
+                          color: event.spending ? '#FF9013' : '#ccc',
+                          border: event.spending ? '1px solid #FFE0B2' : '1px dashed #ddd',
                           transition: 'all 0.15s',
                         }}
                       >
@@ -571,7 +571,7 @@ function TimelineSpendingStep({
         onClick={() => onNext(events)}
         style={{
           width: '100%', marginTop: 16, padding: '16px',
-          background: 'linear-gradient(135deg, #3b82f6, #6366f1)',
+          background: 'linear-gradient(135deg, #0046FF, #73C8D2)',
           color: 'white', border: 'none', borderRadius: 14,
           fontSize: 16, fontWeight: 600, cursor: 'pointer',
           transition: 'opacity 0.2s',
@@ -663,7 +663,7 @@ function DiaryResult({ events, onDone }: { events: TimelineEvent[]; onDone: () =
         <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
           {[0, 1, 2].map(i => (
             <div key={i} style={{
-              width: 8, height: 8, borderRadius: 4, background: '#3b82f6',
+              width: 8, height: 8, borderRadius: 4, background: '#0046FF',
               animation: `bounce 1.4s ease-in-out ${i * 0.2}s infinite`,
             }} />
           ))}
@@ -710,25 +710,25 @@ function DiaryResult({ events, onDone }: { events: TimelineEvent[]; onDone: () =
 
       {/* Spending insight */}
       <div style={{
-        padding: '14px 18px', background: '#f0fdf4', borderRadius: 14,
-        border: '1px solid #bbf7d0', marginBottom: 12,
+        padding: '14px 18px', background: '#FFF3E0', borderRadius: 14,
+        border: '1px solid #FFE0B2', marginBottom: 12,
         display: 'flex', alignItems: 'center', gap: 10,
       }}>
         <span style={{ fontSize: 20 }}>💰</span>
         <div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#166534' }}>{diary!.insight}</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#FF9013' }}>{diary!.insight}</div>
         </div>
       </div>
 
       {/* Tomorrow's tip */}
       <div style={{
-        padding: '14px 18px', background: '#eff6ff', borderRadius: 14,
-        border: '1px solid #bfdbfe', marginBottom: 24,
+        padding: '14px 18px', background: '#F5F1DC', borderRadius: 14,
+        border: '1px solid #73C8D2', marginBottom: 24,
         display: 'flex', alignItems: 'center', gap: 10,
       }}>
         <span style={{ fontSize: 20 }}>💡</span>
         <div>
-          <div style={{ fontSize: 13, color: '#1e40af' }}>{diary!.tip}</div>
+          <div style={{ fontSize: 13, color: '#0046FF' }}>{diary!.tip}</div>
         </div>
       </div>
 
@@ -749,7 +749,7 @@ function DiaryResult({ events, onDone }: { events: TimelineEvent[]; onDone: () =
         disabled={saving}
         style={{
           width: '100%', padding: '16px',
-          background: saving ? '#94a3b8' : 'linear-gradient(135deg, #3b82f6, #6366f1)',
+          background: saving ? '#94a3b8' : 'linear-gradient(135deg, #0046FF, #73C8D2)',
           color: 'white', border: 'none', borderRadius: 14,
           fontSize: 16, fontWeight: 600, cursor: saving ? 'default' : 'pointer',
           transition: 'background 0.2s',
@@ -769,9 +769,9 @@ function ThumbChip({ event }: { event: TimelineEvent }) {
       style={{
         padding: '6px 12px', borderRadius: 20, cursor: 'pointer',
         fontSize: 13, display: 'flex', alignItems: 'center', gap: 4,
-        background: selected ? '#eff6ff' : '#f9fafb',
-        border: selected ? '1.5px solid #3b82f6' : '1px solid #e5e7eb',
-        color: selected ? '#2563eb' : '#666',
+        background: selected ? '#F5F1DC' : '#f9fafb',
+        border: selected ? '1.5px solid #0046FF' : '1px solid #e5e7eb',
+        color: selected ? '#0046FF' : '#666',
         fontWeight: selected ? 600 : 400,
         transition: 'all 0.15s',
       }}
@@ -792,7 +792,7 @@ export default function DayFlowInput() {
   const steps = ['Calendar', 'Photos', 'Timeline', 'Diary'];
 
   return (
-    <div className="max-w-[393px] mx-auto min-h-dvh" style={{ background: '#fafaf9' }}>
+    <div className="max-w-[393px] mx-auto min-h-dvh" style={{ background: '#ffffff' }}>
       {/* Header */}
       <div
         className="sticky top-0 z-10"
@@ -800,7 +800,7 @@ export default function DayFlowInput() {
           padding: '16px 20px 8px',
           paddingTop: 'calc(16px + var(--safe-top))',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          background: 'rgba(250,250,249,0.9)', backdropFilter: 'blur(12px)',
+          background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(12px)',
         }}
       >
         <div className="font-[family-name:var(--font-outfit)]" style={{ fontSize: 20, fontWeight: 700, color: '#1a1a1a' }}>

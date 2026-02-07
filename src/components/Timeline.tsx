@@ -23,11 +23,11 @@ export default function Timeline({ events, onUpdateExpense }: TimelineProps) {
           {events.map((event, index) => (
             <li key={index} className="flex items-center gap-4 p-3 rounded-lg border">
               <span className="text-sm font-mono text-gray-500">{event.time}</span>
-              <span className="flex-1">{event.event}</span>
+              <span className="flex-1">{event.title}</span>
               <input
                 type="number"
                 placeholder="금액"
-                value={event.expense || ''}
+                value={event.spending || ''}
                 onChange={(e) => onUpdateExpense(index, Number(e.target.value))}
                 className="w-24 px-2 py-1 border rounded text-right"
               />

@@ -39,7 +39,8 @@ export default function ExpenseInput({ onAdd }: ExpenseInputProps) {
       <span className="text-sm text-gray-400">원</span>
       <button
         type="submit"
-        className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"
+        className="px-4 py-2 rounded-lg hover:opacity-90"
+        style={{ background: '#FF9013', color: 'white' }}
       >
         추가
       </button>
