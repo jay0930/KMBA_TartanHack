@@ -14,80 +14,6 @@ const GRADIENTS = [
   'linear-gradient(135deg, #73C8D2 0%, #FF9013 100%)',
 ];
 
-const MOCK_DIARIES = [
-  {
-    id: '1',
-    date: 'Thursday, Feb 5',
-    emojis: ['☕', '🍜', '📚', '🍺'],
-    times: ['8am', '12pm', '3pm', '7pm'],
-    preview: 'A cozy day of coffee and catching up with old friends at the noodle place...',
-    total: 47.5,
-    hasPhoto: true,
-    photoUrl: '/images/grid-1.png',
-    photoGradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-    primaryEmoji: '☕',
-  },
-  {
-    id: '2',
-    date: 'Wednesday, Feb 4',
-    emojis: ['🏃', '☕', '💻', '🍕', '🎬'],
-    times: ['7am', '9am', '10am', '1pm', '7pm'],
-    preview: 'Started with a run along the river, then powered through a long coding session...',
-    total: 32.0,
-    hasPhoto: true,
-    photoUrl: '/images/209895_00_2x.jpg',
-    photoGradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-    primaryEmoji: '🏃',
-  },
-  {
-    id: '3',
-    date: 'Tuesday, Feb 3',
-    emojis: ['🧘', '🥗', '🎨', '🍷'],
-    times: ['7am', '12pm', '4pm', '8pm'],
-    preview: 'Morning yoga cleared my mind, then spent the afternoon painting at the studio...',
-    total: 28.0,
-    hasPhoto: true,
-    photoUrl: '/images/grid-2.png',
-    photoGradient: 'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)',
-    primaryEmoji: '🧘',
-  },
-  {
-    id: '4',
-    date: 'Monday, Feb 2',
-    emojis: ['☕', '💼', '🍔', '🎮', '🛁'],
-    times: ['8am', '9am', '1pm', '6pm', '10pm'],
-    preview: 'Back to the grind — meetings all morning, grabbed burgers with the team after...',
-    total: 53.25,
-    hasPhoto: true,
-    photoUrl: '/images/grid-4.png',
-    photoGradient: 'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)',
-    primaryEmoji: '💼',
-  },
-  {
-    id: '5',
-    date: 'Sunday, Feb 1',
-    emojis: ['🥞', '📖', '🚶', '🍣'],
-    times: ['10am', '1pm', '4pm', '7pm'],
-    preview: 'Lazy brunch with pancakes, read half a novel, then evening sushi date downtown...',
-    total: 61.5,
-    hasPhoto: true,
-    photoUrl: '/images/grid-6.png',
-    photoGradient: 'linear-gradient(135deg, #89f7fe 0%, #66a6ff 100%)',
-    primaryEmoji: '📖',
-  },
-  {
-    id: '6',
-    date: 'Saturday, Jan 31',
-    emojis: ['🏔️', '📸', '☕', '🍲'],
-    times: ['9am', '12pm', '3pm', '7pm'],
-    preview: 'Hiked up to the overlook and took amazing photos, warmed up with hot pot after...',
-    total: 39.0,
-    hasPhoto: true,
-    photoUrl: '/images/grid-8.png',
-    photoGradient: 'linear-gradient(135deg, #96fbc4 0%, #f9f586 100%)',
-    primaryEmoji: '🏔️',
-  },
-];
 
 interface MockDiary {
   id: string;
@@ -217,8 +143,8 @@ function DiaryCard({
 export default function DayFlowFeed() {
   const router = useRouter();
   const [selectedDiary, setSelectedDiary] = useState<MockDiary | null>(null);
-  const [diaries, setDiaries] = useState<MockDiary[]>(MOCK_DIARIES);
-  const [weeklyTotal, setWeeklyTotal] = useState(121.75);
+  const [diaries, setDiaries] = useState<MockDiary[]>([]);
+  const [weeklyTotal, setWeeklyTotal] = useState(0);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [userName, setUserName] = useState<string>('');

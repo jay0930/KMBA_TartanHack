@@ -2,9 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
-
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001';
+import { backendFetch, fetchCurrentUser } from '@/lib/api';
 
 interface ProfileData {
   name: string;
@@ -33,17 +31,16 @@ export default function ProfilePage() {
 
   // Check auth and load profile data from backend on mount
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
+    fetchCurrentUser().then((user) => {
+      if (!user) {
         router.replace('/login');
         return;
       }
-      const uid = session.user.id;
-      setUserId(uid);
+      setUserId(user.id);
 
       const fetchProfile = async () => {
         try {
-          const res = await fetch(`${BACKEND_URL}/api/user?user_id=${uid}`);
+          const res = await backendFetch('/api/user');
           const data = await res.json();
           setProfile({
             name: data.name || '',
@@ -79,7 +76,7 @@ export default function ProfilePage() {
         photo_url: profile.photo_url || null,
       };
 
-      const res = await fetch(`${BACKEND_URL}/api/user?user_id=${userId}`, {
+      const res = await backendFetch('/api/user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -336,7 +333,7 @@ export default function ProfilePage() {
                 onClick={async () => {
                   try {
                     // Clear profile in DB
-                    await fetch(`${BACKEND_URL}/api/user?user_id=${userId}`, {
+                    await backendFetch('/api/user', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
@@ -398,7 +395,7 @@ export default function ProfilePage() {
               </button>
               <button
                 onClick={async () => {
-                  await supabase.auth.signOut();
+                  await fetch('/api/auth/logout', { method: 'POST' });
                   router.replace('/login');
                 }}
                 className="flex-1 py-3 bg-[#0046FF] text-white text-sm font-semibold hover:bg-[#0041E6] rounded-xl transition-colors"

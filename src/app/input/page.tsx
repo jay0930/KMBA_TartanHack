@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import type { CalendarEvent, PhotoEvent, TimelineEvent } from '@/lib/types';
-import { supabase } from '@/lib/supabase';
+import { backendFetch, fetchCurrentUser } from '@/lib/api';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001';
 
@@ -58,7 +58,7 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
     const init = async () => {
       // Load saved calendar URL from profile
       try {
-        const res = await fetch(`${BACKEND_URL}/api/user?user_id=${userId}`);
+        const res = await backendFetch(`/api/user`);
         const data = await res.json();
         if (data.calendar_url) {
           setCalendarUrl(data.calendar_url);
@@ -87,7 +87,7 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
       const today = new Date().toISOString().split('T')[0];
       const params = new URLSearchParams({ date: today });
       if (calId) params.set('calendar_id', calId);
-      const res = await fetch(`${BACKEND_URL}/api/calendar/fetch?${params}`);
+      const res = await backendFetch(`/api/calendar/fetch?${params}`);
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.detail || `HTTP ${res.status}`);
@@ -122,12 +122,12 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
     setError(null);
     try {
       // Check if already authenticated
-      const statusRes = await fetch(`${BACKEND_URL}/api/auth/google/status`);
+      const statusRes = await backendFetch(`/api/auth/google/status?user_id=${userId}`);
       const status = await statusRes.json();
       if (status.connected) {
         // Already connected — save URL to profile and fetch events
         if (calId) {
-          await fetch(`${BACKEND_URL}/api/user?user_id=${userId}`, {
+          await backendFetch(`/api/user`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ calendar_url: calendarUrl }),
@@ -140,13 +140,13 @@ function CalendarStep({ onNext, userId }: { onNext: (events: CalendarEvent[]) =>
       // Save calendar ID to localStorage so we can use it after redirect
       if (calId) {
         localStorage.setItem('dayflow_calendar_id', calId);
-        await fetch(`${BACKEND_URL}/api/user?user_id=${userId}`, {
+        await backendFetch(`/api/user`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ calendar_url: calendarUrl }),
         }).catch(() => {});
       }
-      window.location.href = `${BACKEND_URL}/api/auth/google`;
+      window.location.href = `${BACKEND_URL}/api/auth/google?user_id=${userId}`;
     } catch (err: any) {
       console.error('Calendar connect failed:', err);
       setError(err.message || 'Failed to connect to Google Calendar');
@@ -493,7 +493,7 @@ function PhotoStep({ onNext }: { onNext: (photos: PhotoEvent[]) => void }) {
       const formData = new FormData();
       items.forEach(item => formData.append('files', item.file));
       const today = new Date().toISOString().split('T')[0];
-      const res = await fetch(`${BACKEND_URL}/api/photos/upload?date=${today}`, {
+      const res = await backendFetch(`/api/photos/upload?date=${today}`, {
         method: 'POST',
         body: formData,
       });
@@ -1041,7 +1041,7 @@ function DiaryResult({ events, onDone, userId }: { events: TimelineEvent[]; onDo
         },
       };
       console.log('[DEBUG] Saving diary with payload:', payload);
-      const res = await fetch(`${BACKEND_URL}/api/diary/save`, {
+      const res = await backendFetch('/api/diary/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -1219,12 +1219,12 @@ export default function DayFlowInput() {
   const steps = ['Calendar', 'Photos', 'Timeline', 'Diary'];
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
+    fetchCurrentUser().then((user) => {
+      if (!user) {
         router.replace('/login');
         return;
       }
-      setUserId(session.user.id);
+      setUserId(user.id);
       setAuthReady(true);
     });
   }, [router]);
