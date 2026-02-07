@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import type { CalendarEvent, PhotoEvent, TimelineEvent } from '@/lib/types';
 
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+
 // ─── MOCK DATA ───
 const MOCK_CALENDAR = [
   { time: '08:30', title: 'Morning Coffee', location: 'Blue Bottle Coffee', emoji: '☕' },
@@ -12,14 +14,6 @@ const MOCK_CALENDAR = [
   { time: '15:00', title: 'Gym Session', location: 'CMU Gym', emoji: '🏋️' },
   { time: '19:00', title: 'Dinner', location: 'Thai Place', emoji: '🍛' },
 ];
-
-const MOCK_DIARY = `Today was one of those days where the little moments mattered most. Started with my usual Blue Bottle ritual — there's something about that first sip that sets the tone for everything.
-
-The standup was quick (for once), and then Sarah and I finally caught up over noodles. We hadn't talked properly in weeks, and it felt good to just laugh about nothing important.
-
-Hit the gym in the afternoon, which I almost skipped. Glad I didn't — the endorphins carried me through the rest of the day. That sunset walk was unplanned but turned out to be the highlight.
-
-Ended with Thai food, because why not? A small indulgence to close out a good day.`;
 
 // ─── STEP INDICATOR ───
 function StepBar({ current, steps }: { current: number; steps: string[] }) {
@@ -283,9 +277,10 @@ function CalendarStep({ onNext }: { onNext: (events: CalendarEvent[]) => void })
 // ─── STEP 2: PHOTOS ───
 function PhotoStep({ onNext }: { onNext: (photos: PhotoEvent[]) => void }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [previews, setPreviews] = useState<{ url: string; time: number }[]>([]);
+  const [previews, setPreviews] = useState<{ url: string; time: number; file: File }[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzed, setAnalyzed] = useState(false);
+  const [captions, setCaptions] = useState<{ emoji: string; caption: string; time: string }[]>([]);
 
   const MOCK_CAPTIONS = [
     { emoji: '☕', caption: 'Morning coffee at Blue Bottle' },
@@ -300,26 +295,51 @@ function PhotoStep({ onNext }: { onNext: (photos: PhotoEvent[]) => void }) {
     return `${h}:${m}`;
   };
 
+  const analyzePhotos = async (items: { url: string; time: number; file: File }[]) => {
+    setAnalyzing(true);
+    try {
+      const formData = new FormData();
+      items.forEach(item => formData.append('files', item.file));
+      const res = await fetch(`${BACKEND_URL}/api/photos/analyze`, {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.events) {
+        setCaptions(data.events.map((e: any) => ({
+          emoji: e.emoji || '📸',
+          caption: e.title || e.description || 'Photo',
+          time: e.time || '12:00',
+        })));
+      }
+    } catch (err) {
+      console.error('Photo analysis failed:', err);
+      setCaptions(items.map((_, i) => ({
+        ...MOCK_CAPTIONS[i % MOCK_CAPTIONS.length],
+        time: formatFileTime(items[i].time),
+      })));
+    } finally {
+      setAnalyzing(false);
+      setAnalyzed(true);
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     const newItems = Array.from(files).map(f => ({
       url: URL.createObjectURL(f),
       time: f.lastModified,
+      file: f,
     }));
-    setPreviews(prev =>
-      [...prev, ...newItems]
-        .sort((a, b) => a.time - b.time)
-        .slice(0, 10)
-    );
+    const updated = [...previews, ...newItems]
+      .sort((a, b) => a.time - b.time)
+      .slice(0, 10);
+    setPreviews(updated);
     // reset input so same file can be re-selected
     e.target.value = '';
-    // auto-start analysis
-    setAnalyzing(true);
-    setTimeout(() => {
-      setAnalyzing(false);
-      setAnalyzed(true);
-    }, 2000);
+    // analyze with AI
+    analyzePhotos(updated);
   };
 
   const handleRemove = (idx: number) => {
@@ -395,7 +415,7 @@ function PhotoStep({ onNext }: { onNext: (photos: PhotoEvent[]) => void }) {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
             {previews.map((photo, i) => {
-              const mock = MOCK_CAPTIONS[i % MOCK_CAPTIONS.length];
+              const cap = captions[i] || MOCK_CAPTIONS[i % MOCK_CAPTIONS.length];
               return (
                 <div key={i} style={{
                   borderRadius: 16, overflow: 'hidden',
@@ -429,7 +449,7 @@ function PhotoStep({ onNext }: { onNext: (photos: PhotoEvent[]) => void }) {
                         borderRadius: 8, padding: '4px 10px',
                         fontSize: 12, fontWeight: 700, color: '#0046FF',
                       }}>
-                        {formatFileTime(photo.time)}
+                        {captions[i]?.time || formatFileTime(photo.time)}
                       </div>
                     )}
                   </div>
@@ -441,8 +461,8 @@ function PhotoStep({ onNext }: { onNext: (photos: PhotoEvent[]) => void }) {
                       fontSize: 13, fontWeight: 500, color: '#555',
                       display: 'flex', alignItems: 'center', gap: 6,
                     }}>
-                      <span style={{ fontSize: 14 }}>{mock.emoji}</span>
-                      {mock.caption}
+                      <span style={{ fontSize: 14 }}>{cap.emoji}</span>
+                      {cap.caption}
                     </div>
                   )}
                 </div>
@@ -466,11 +486,11 @@ function PhotoStep({ onNext }: { onNext: (photos: PhotoEvent[]) => void }) {
         <button
           onClick={() => {
             const photoEventsFromPreviews: PhotoEvent[] = previews.map((photo, i) => {
-              const mock = MOCK_CAPTIONS[i % MOCK_CAPTIONS.length];
+              const cap = captions[i] || MOCK_CAPTIONS[i % MOCK_CAPTIONS.length];
               return {
-                time: formatFileTime(photo.time),
-                title: mock.caption,
-                emoji: mock.emoji,
+                time: cap.time || formatFileTime(photo.time),
+                title: cap.caption,
+                emoji: cap.emoji,
                 source: 'photo' as const,
               };
             });
@@ -723,8 +743,6 @@ function TimelineSpendingStep({
 }
 
 // ─── STEP 4: DIARY RESULT ───
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
-
 const DIARY_MAX_LENGTH = 1000;
 
 function DiaryResult({ events, onDone }: { events: TimelineEvent[]; onDone: () => void }) {
@@ -740,21 +758,37 @@ function DiaryResult({ events, onDone }: { events: TimelineEvent[]; onDone: () =
   } | null>(null);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      const total = events.reduce((s, e) => s + (e.spending || 0), 0);
-      const foodSpend = events.filter(e => ['🍜', '☕', '🍛'].includes(e.emoji)).reduce((s, e) => s + (e.spending || 0), 0);
-      const pct = total > 0 ? Math.round((foodSpend / total) * 100) : 0;
-
-      setDiary({
-        text: MOCK_DIARY,
-        insight: `Food & drinks made up ${pct}% of today's $${total.toFixed(2)} spending.`,
-        tip: 'Try bringing a thermos from home tomorrow — same ritual, minus the $4.50.',
-        total,
-        emojis: events.map(e => e.emoji),
-      });
-      setLoading(false);
-    }, 3000);
-    return () => clearTimeout(timer);
+    const generateDiary = async () => {
+      try {
+        const res = await fetch('/api/diary', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ timeline: events }),
+        });
+        const data = await res.json();
+        const total = data.total_spending || events.reduce((s, e) => s + (e.spending || 0), 0);
+        setDiary({
+          text: data.diary_text || '',
+          insight: data.spending_insight || '',
+          tip: data.tomorrow_suggestion || '',
+          total,
+          emojis: data.emojis || events.map(e => e.emoji),
+        });
+      } catch (err) {
+        console.error('Diary generation failed:', err);
+        const total = events.reduce((s, e) => s + (e.spending || 0), 0);
+        setDiary({
+          text: 'Failed to generate diary. Please try again.',
+          insight: `Total spending: $${total.toFixed(2)}`,
+          tip: '',
+          total,
+          emojis: events.map(e => e.emoji),
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+    generateDiary();
   }, [events]);
 
   const handleSave = async () => {
