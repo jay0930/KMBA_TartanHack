@@ -107,7 +107,7 @@ async def get_diary_history(limit: int = 30) -> list:
     result = (
         supabase.table("diaries")
         .select("*, timeline_events(id, time, emoji, title, spending, source, is_deleted)")
-        .order("date", desc=True)
+        .order("created_at", desc=True)
         .limit(limit)
         .execute()
     )
