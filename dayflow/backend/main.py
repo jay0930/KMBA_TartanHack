@@ -175,7 +175,7 @@ async def _analyze_one(file: UploadFile) -> dict:
     mime = file.content_type or "image/jpeg"
 
     result = await runner.run(
-        model="anthropic/claude-sonnet-4-20250514",
+        model="anthropic/claude-sonnet-4-5-20250929",
         input=[
             {"role": "user", "content": [
                 {"type": "text", "text": PHOTO_ANALYSIS_PROMPT},

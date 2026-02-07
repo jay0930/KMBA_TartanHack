@@ -4,8 +4,8 @@ export interface TimelineEvent {
   time: string;        // "08:30" HH:MM
   emoji: string;       // "☕"
   title: string;       // "Morning coffee"
-  description: string; // "Got a latte at Blue Bottle"
-  spending: number;    // cents (450 = $4.50), 0 if none
+  description?: string; // "Got a latte at Blue Bottle"
+  spending?: number;    // cents (450 = $4.50), 0 if none
   category?: string;   // "food" | "transport" | "shopping" | "entertainment" | "other"
   source?: string;     // "calendar" | "photo" | "manual" | "chat"
   location?: string;
@@ -18,6 +18,20 @@ export interface DiaryOutput {
   spending_insight: string;
   tomorrow_suggestion: string;
   total_spending: number;
+}
+
+export interface CalendarEvent {
+  time: string;
+  title: string;
+  location: string;
+  emoji: string;
+}
+
+export interface PhotoEvent {
+  time: string;
+  title: string;
+  emoji: string;
+  source: 'photo';
 }
 
 export interface ChatMessage {

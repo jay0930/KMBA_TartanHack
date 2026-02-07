@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import type { CalendarEvent, PhotoEvent, TimelineEvent } from '@/lib/types';
 
 // ─── MOCK DATA ───
 const MOCK_CALENDAR = [
@@ -25,30 +26,6 @@ The standup was quick (for once), and then Sarah and I finally caught up over no
 Hit the gym in the afternoon, which I almost skipped. Glad I didn't — the endorphins carried me through the rest of the day. That sunset walk was unplanned but turned out to be the highlight.
 
 Ended with Thai food, because why not? A small indulgence to close out a good day.`;
-
-// ─── TYPES ───
-interface CalendarEvent {
-  time: string;
-  title: string;
-  location: string;
-  emoji: string;
-}
-
-interface PhotoEvent {
-  time: string;
-  title: string;
-  emoji: string;
-  source: 'photo';
-}
-
-interface TimelineEvent {
-  time: string;
-  title: string;
-  emoji: string;
-  source?: string;
-  location?: string;
-  spending?: number;
-}
 
 // ─── STEP INDICATOR ───
 function StepBar({ current, steps }: { current: number; steps: string[] }) {

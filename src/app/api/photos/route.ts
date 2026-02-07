@@ -1,15 +1,15 @@
-import { runner, type RunResult } from '@/lib/dedalus';
 import { NextResponse } from 'next/server';
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const date = searchParams.get('date') || new Date().toISOString().split('T')[0];
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001';
 
-  const response = await runner.run({
-    input: `${date}에 찍은 사진들의 메타데이터(시간, 위치, 썸네일 URL)를 가져와줘`,
-    model: "anthropic/claude-sonnet-4-5-20250929",
-    mcpServers: ["google-photos"],
-  }) as RunResult;
+export async function POST(request: Request) {
+  // Forward multipart form data directly to FastAPI backend
+  const formData = await request.formData();
 
-  return NextResponse.json({ photos: response.finalOutput });
+  const res = await fetch(`${BACKEND_URL}/api/photos/analyze`, {
+    method: 'POST',
+    body: formData,
+  });
+  const data = await res.json();
+  return NextResponse.json(data);
 }
