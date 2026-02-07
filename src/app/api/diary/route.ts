@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { callDedalus, extractText } from '@/lib/dedalus';
 import type { TimelineEvent } from '@/lib/types';
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001';
 
 export async function POST(request: Request) {
   const { timeline }: { timeline: TimelineEvent[] } = await request.json();

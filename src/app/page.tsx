@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import EmojiTimeline from '@/components/EmojiTimeline';
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001';
 
 const GRADIENTS = [
   'linear-gradient(135deg, #0046FF 0%, #73C8D2 100%)',

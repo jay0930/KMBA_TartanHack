@@ -32,14 +32,14 @@ async def test_connection() -> dict:
         supabase.table("diaries")
         .select("*")
         .eq("id", row_id)
-        .maybe_single()
+        .limit(1)
         .execute()
     )
 
     # clean up
     supabase.table("diaries").delete().eq("id", row_id).execute()
 
-    return {"ok": True, "row": row.data}
+    return {"ok": True, "row": row.data[0] if row.data else None}
 
 
 # ── Diaries ─────────────────────────────────────────────────────────
@@ -84,10 +84,12 @@ async def get_diary(date: str) -> dict | None:
         supabase.table("diaries")
         .select("*, timeline_events(*)")
         .eq("date", date)
-        .maybe_single()
+        .limit(1)
         .execute()
     )
-    return result.data
+    if result.data and len(result.data) > 0:
+        return result.data[0]
+    return None
 
 
 async def get_diary_by_id(diary_id: str) -> dict | None:
@@ -96,10 +98,12 @@ async def get_diary_by_id(diary_id: str) -> dict | None:
         supabase.table("diaries")
         .select("*, timeline_events(*), photos(*)")
         .eq("id", diary_id)
-        .maybe_single()
+        .limit(1)
         .execute()
     )
-    return result.data
+    if result.data and len(result.data) > 0:
+        return result.data[0]
+    return None
 
 
 async def get_diary_history(limit: int = 30) -> list:
@@ -172,11 +176,11 @@ async def soft_delete_event(event_id: str) -> dict:
     return {"success": True}
 
 
-async def update_spending(event_id: str, amount: int) -> dict:
+async def update_spending(event_id: str, amount: float) -> dict:
     """Update the spending amount on a timeline event."""
     result = (
         supabase.table("timeline_events")
-        .update({"spending": amount})
+        .update({"spending": round(amount)})
         .eq("id", event_id)
         .execute()
     )

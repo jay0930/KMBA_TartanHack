@@ -44,7 +44,7 @@ export async function POST(request: Request) {
   // Validate language
   if (!VALID_LANGUAGES.includes(body.language)) {
     return NextResponse.json(
-      { error: 'Invalid language. Must be "en" or "ko"' },
+      { error: 'Invalid language. Must be "en" or "auto"' },
       { status: 400 },
     );
   }

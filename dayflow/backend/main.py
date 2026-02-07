@@ -1,7 +1,7 @@
 import asyncio
 import base64
 
-from fastapi import FastAPI, File, Query, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dedalus_labs import AsyncDedalus, DedalusRunner
@@ -36,7 +36,8 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -78,7 +79,7 @@ class SaveDiaryRequest(BaseModel):
 
 class UpdateSpendingRequest(BaseModel):
     event_id: str
-    spending: int
+    spending: float
 
 
 class ThumbRequest(BaseModel):
@@ -212,7 +213,7 @@ async def get_diary_detail(diary_id: str):
     """Get a single diary with full timeline events and photos."""
     diary = await db_get_diary_by_id(diary_id)
     if not diary:
-        return {"error": "Diary not found"}
+        raise HTTPException(status_code=404, detail="Diary not found")
     return diary
 
 
