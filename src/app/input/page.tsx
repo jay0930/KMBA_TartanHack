@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import type { CalendarEvent, PhotoEvent, TimelineEvent } from '@/lib/types';
 import { backendFetch, fetchCurrentUser } from '@/lib/api';
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001';
+import { BACKEND_URL } from '@/lib/backend-url';
 
 // ─── STEP INDICATOR ───
 function StepBar({ current, steps }: { current: number; steps: string[] }) {
