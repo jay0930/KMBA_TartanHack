@@ -97,6 +97,14 @@ async def get_current_user(request: Request) -> str:
     return user_id
 
 
+async def _verify_diary_owner(diary_id: str, user_id: str) -> dict:
+    """Verify that a diary belongs to the given user. Returns diary or raises 404."""
+    diary = await db_get_diary_by_id(diary_id, user_id=user_id)
+    if not diary:
+        raise HTTPException(status_code=404, detail="Diary not found")
+    return diary
+
+
 # ── Dedalus client ──────────────────────────────────────────────────
 dedalus_client = AsyncDedalus()  # uses DEDALUS_API_KEY env var
 runner = DedalusRunner(dedalus_client)
@@ -338,6 +346,7 @@ async def get_timeline(
 ):
     """Get active (non-deleted) timeline events for a diary, sorted by time."""
     _validate_uuid(diary_id, "diary_id")
+    await _verify_diary_owner(diary_id, user_id)
     events = await get_active_timeline(diary_id)
     return {"timeline": events}
 
@@ -348,6 +357,7 @@ async def add_timeline_event(
     user_id: str = Depends(get_current_user),
 ):
     """Add a manual timeline event to a diary. Auto-generates emoji via LLM if missing."""
+    await _verify_diary_owner(body.diary_id, user_id)
     event_data = body.event.model_dump()
 
     # Generate emoji if missing or generic default
@@ -402,7 +412,8 @@ async def thumb(
     user_id: str = Depends(get_current_user),
 ):
     """Save which timeline event was the user's favorite."""
-    row = await db_save_thumb(body.diary_id, body.event_id)
+    await _verify_diary_owner(body.diary_id, user_id)
+    row = await db_save_thumb(body.diary_id, body.event_id, user_id=user_id)
     return row
 
 
@@ -432,7 +443,7 @@ async def get_diary_detail(
 ):
     """Get a single diary with full timeline events and photos."""
     _validate_uuid(diary_id, "diary_id")
-    diary = await db_get_diary_by_id(diary_id)
+    diary = await db_get_diary_by_id(diary_id, user_id=user_id)
     if not diary:
         raise HTTPException(status_code=404, detail="Diary not found")
     return diary
@@ -445,7 +456,7 @@ async def delete_diary(
 ):
     """Delete a diary entry and all related data (cascade)."""
     _validate_uuid(diary_id, "diary_id")
-    await db_delete_diary(diary_id)
+    await db_delete_diary(diary_id, user_id=user_id)
     return {"ok": True}
 
 
@@ -457,6 +468,7 @@ async def save_photos_endpoint(
     user_id: str = Depends(get_current_user),
 ):
     """Save photo records linked to a diary entry."""
+    await _verify_diary_owner(body.diary_id, user_id)
     photo_dicts = [p.model_dump() for p in body.photos]
     rows = await db_save_photos(body.diary_id, photo_dicts)
     return {"saved": len(rows), "photos": rows}
@@ -469,6 +481,10 @@ async def get_photos_endpoint(
 ):
     """Get all photos for a diary entry."""
     _validate_uuid(diary_id, "diary_id")
+    # Verify diary belongs to current user
+    diary = await db_get_diary_by_id(diary_id, user_id=user_id)
+    if not diary:
+        raise HTTPException(status_code=404, detail="Diary not found")
     photos = await db_get_photos(diary_id)
     return {"photos": photos}
 
@@ -633,8 +649,10 @@ async def get_calendar(
     date: str = Query(...),
     user_id: str = Depends(get_current_user),
 ):
-    """Get all calendar events for a date."""
-    events = await db_get_calendar_events(date)
+    """Get calendar events for a date (filtered by user's diary)."""
+    diary = await db_get_diary(date, user_id=user_id)
+    diary_id = diary["id"] if diary and diary.get("user_id") == user_id else None
+    events = await db_get_calendar_events(date, diary_id=diary_id)
     return {"date": date, "events": events}
 
 
@@ -643,8 +661,11 @@ async def delete_calendar(
     date: str = Query(...),
     user_id: str = Depends(get_current_user),
 ):
-    """Delete all calendar events for a date (re-import)."""
-    await db_delete_calendar_events(date)
+    """Delete calendar events for a date (filtered by user's diary)."""
+    diary = await db_get_diary(date, user_id=user_id)
+    diary_id = diary["id"] if diary and diary.get("user_id") == user_id else None
+    if diary_id:
+        await db_delete_calendar_events(date, diary_id=diary_id)
     return {"ok": True}
 
 
@@ -957,6 +978,9 @@ async def get_user_profile(user_id: str = Depends(get_current_user)):
             "calendar_url": None,
             "photo_url": None,
         }
+    # Strip sensitive fields
+    user.pop("password_hash", None)
+    user.pop("google_token", None)
     return user
 
 
@@ -968,4 +992,7 @@ async def update_user_profile(
     """Create or update user profile for the authenticated user."""
     user_data = profile.model_dump(exclude_none=False)
     result = await db_create_or_update_user(user_id, user_data)
+    # Strip sensitive fields
+    result.pop("password_hash", None)
+    result.pop("google_token", None)
     return result
