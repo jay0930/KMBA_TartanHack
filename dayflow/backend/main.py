@@ -1009,7 +1009,7 @@ async def update_user_profile(
     user_id: str = Depends(get_current_user),
 ):
     """Create or update user profile for the authenticated user."""
-    user_data = profile.model_dump(exclude_none=False)
+    user_data = profile.model_dump(exclude_none=True)
     result = await db_create_or_update_user(user_id, user_data)
     # Strip sensitive fields
     result.pop("password_hash", None)
