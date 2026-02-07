@@ -13,6 +13,22 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 PHOTO_BUCKET = "photos"
 
 
+def _extract_hhmm(time_str: str) -> str:
+    """Extract HH:MM from various time formats.
+
+    Handles ISO 8601 ("2025-02-07T10:00:00"), plain time ("10:00"), etc.
+    """
+    if not time_str:
+        return "12:00"
+    if "T" in time_str:
+        # ISO format: extract after the T
+        time_part = time_str.split("T", 1)[1]
+        return time_part[:5] if len(time_part) >= 5 else "12:00"
+    if len(time_str) >= 5 and time_str[2] == ":":
+        return time_str[:5]
+    return "12:00"
+
+
 # ── Test ────────────────────────────────────────────────────────────
 
 async def test_connection() -> dict:
@@ -198,8 +214,8 @@ async def save_calendar_events(date: str, events: list[dict], diary_id: str | No
     supabase.table("calendar_events").delete().eq("date", date).execute()
     # Also delete by calendar_id to avoid unique constraint violations from multi-day events
     cal_ids = [ev.get("calendar_id") for ev in events if ev.get("calendar_id")]
-    for cid in cal_ids:
-        supabase.table("calendar_events").delete().eq("calendar_id", cid).execute()
+    if cal_ids:
+        supabase.table("calendar_events").delete().in_("calendar_id", cal_ids).execute()
 
     rows = []
     for ev in events:
@@ -301,7 +317,7 @@ async def save_calendar_as_timeline(diary_id: str, events: list[dict]) -> dict:
     for i, e in enumerate(new_events):
         rows.append({
             "diary_id": diary_id,
-            "time": e.get("start_time", e.get("time", "12:00"))[:5],  # HH:MM
+            "time": _extract_hhmm(e.get("start_time", e.get("time", "12:00"))),
             "emoji": e.get("emoji", "📅"),
             "title": e.get("title", ""),
             "description": e.get("description", ""),
@@ -404,3 +420,39 @@ async def create_or_update_user(user_id: str, user_data: dict) -> dict:
         row = {"user_id": user_id, **user_data}
         result = supabase.table("users").insert(row).execute()
         return result.data[0]
+
+
+# ── Google OAuth Token (DB storage) ──────────────────────────────
+
+async def save_google_token(user_id: str, token_data: dict) -> dict:
+    """Save Google OAuth token JSON to the users table."""
+    existing = await get_user(user_id)
+    if existing:
+        result = (
+            supabase.table("users")
+            .update({"google_token": token_data})
+            .eq("user_id", user_id)
+            .execute()
+        )
+        return result.data[0]
+    else:
+        result = (
+            supabase.table("users")
+            .insert({"user_id": user_id, "google_token": token_data})
+            .execute()
+        )
+        return result.data[0]
+
+
+async def get_google_token(user_id: str) -> dict | None:
+    """Load Google OAuth token JSON from the users table."""
+    result = (
+        supabase.table("users")
+        .select("google_token")
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+    if result.data and result.data[0].get("google_token"):
+        return result.data[0]["google_token"]
+    return None

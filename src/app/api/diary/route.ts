@@ -5,6 +5,7 @@ import type { TimelineEvent } from '@/lib/types';
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001';
 
 export async function POST(request: Request) {
+  const authHeader = request.headers.get('Authorization') || '';
   const { timeline }: { timeline: TimelineEvent[] } = await request.json();
 
   const totalSpending = timeline.reduce((sum, item) => sum + (item.spending || 0), 0);
@@ -66,9 +67,12 @@ Return ONLY a JSON object (no markdown, no code fences):
 
   // Save to Supabase via FastAPI backend
   const today = new Date().toISOString().split('T')[0];
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (authHeader) headers['Authorization'] = authHeader;
+
   const saveRes = await fetch(`${BACKEND_URL}/api/diary/save`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({
       date: today,
       diary: {
@@ -89,10 +93,14 @@ Return ONLY a JSON object (no markdown, no code fences):
 }
 
 export async function GET(request: Request) {
+  const authHeader = request.headers.get('Authorization') || '';
   const { searchParams } = new URL(request.url);
   const limit = searchParams.get('limit') || '30';
 
-  const res = await fetch(`${BACKEND_URL}/api/diary/history?limit=${limit}`);
+  const headers: Record<string, string> = {};
+  if (authHeader) headers['Authorization'] = authHeader;
+
+  const res = await fetch(`${BACKEND_URL}/api/diary/history?limit=${limit}`, { headers });
   const data = await res.json();
   return NextResponse.json(data);
 }

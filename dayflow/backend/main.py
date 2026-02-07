@@ -1,17 +1,20 @@
 import asyncio
 import base64
+import io
+import json
+import logging
 import os
+from uuid import UUID
 
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+import jwt
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse, RedirectResponse
+from pydantic import BaseModel, field_validator
 from dedalus_labs import AsyncDedalus, DedalusRunner
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build as google_build
 from google.oauth2.credentials import Credentials
-
-import json
 
 from db import (
     test_connection,
@@ -29,7 +32,6 @@ from db import (
     save_calendar_as_timeline,
     get_calendar_events as db_get_calendar_events,
     delete_calendar_events as db_delete_calendar_events,
-    save_photo as db_save_photo,
     save_photo_event as db_save_photo_event,
     save_photos as db_save_photos,
     get_photos as db_get_photos,
@@ -37,52 +39,104 @@ from db import (
     delete_diary as db_delete_diary,
     get_user as db_get_user,
     create_or_update_user as db_create_or_update_user,
+    save_google_token as db_save_google_token,
+    get_google_token as db_get_google_token,
 )
+
+logger = logging.getLogger("dayflow")
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001", "https://kmbatartanhack-production.up.railway.app"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "https://kmbatartanhack-production.up.railway.app",
+    ],
     allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+
+# ── Global exception handler ─────────────────────────────────────
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Return consistent JSON error format for unhandled exceptions."""
+    if isinstance(exc, HTTPException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"error": exc.detail},
+        )
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal server error"},
+    )
+
+
+# ── JWT Authentication ────────────────────────────────────────────
+
+SUPABASE_JWT_SECRET = os.environ.get("SUPABASE_JWT_SECRET", "")
+
+
+def _validate_uuid(value: str, field_name: str) -> str:
+    """Validate that a string is a valid UUID."""
+    try:
+        UUID(value)
+        return value
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=422, detail=f"Invalid UUID for {field_name}: {value}")
+
+
+async def get_current_user(request: Request) -> str:
+    """Extract and verify user_id from Supabase Auth JWT.
+
+    Returns the authenticated user's UUID string.
+    Raises 401 if token is missing/invalid.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+
+    token = auth_header[7:]  # strip "Bearer "
+
+    if not SUPABASE_JWT_SECRET:
+        raise HTTPException(status_code=500, detail="SUPABASE_JWT_SECRET not configured")
+
+    try:
+        payload = jwt.decode(
+            token,
+            SUPABASE_JWT_SECRET,
+            algorithms=["HS256"],
+            audience="authenticated",
+        )
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Token missing user ID")
+
+    return user_id
+
+
 # ── Dedalus client ──────────────────────────────────────────────────
 dedalus_client = AsyncDedalus()  # uses DEDALUS_API_KEY env var
 runner = DedalusRunner(dedalus_client)
+
 
 # ── Google Calendar OAuth ─────────────────────────────────────────
 GOOGLE_SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8001")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
-TOKEN_PATH = os.path.join(os.path.dirname(__file__), ".google_token.json")
+DEFAULT_CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", "primary")
 
-
-def _load_credentials() -> Credentials | None:
-    """Load saved Google OAuth credentials from disk."""
-    if not os.path.exists(TOKEN_PATH):
-        return None
-    try:
-        creds = Credentials.from_authorized_user_file(TOKEN_PATH, GOOGLE_SCOPES)
-        if creds and creds.expired and creds.refresh_token:
-            from google.auth.transport.requests import Request
-            creds.refresh(Request())
-            _save_credentials(creds)
-        return creds
-    except Exception:
-        return None
-
-
-def _save_credentials(creds: Credentials) -> None:
-    """Persist Google OAuth credentials to disk."""
-    with open(TOKEN_PATH, "w") as f:
-        f.write(creds.to_json())
-
-
-_google_credentials: Credentials | None = _load_credentials()
 
 def _get_google_flow() -> Flow:
     client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
@@ -102,6 +156,27 @@ def _get_google_flow() -> Flow:
         scopes=GOOGLE_SCOPES,
         redirect_uri=f"{BACKEND_URL}/api/auth/google/callback",
     )
+
+
+async def _load_user_credentials(user_id: str) -> Credentials | None:
+    """Load Google OAuth credentials from DB for a user."""
+    token_data = await db_get_google_token(user_id)
+    if not token_data:
+        return None
+    try:
+        creds = Credentials.from_authorized_user_info(token_data, GOOGLE_SCOPES)
+        if creds and creds.expired and creds.refresh_token:
+            from google.auth.transport.requests import Request
+            creds.refresh(Request())
+            await db_save_google_token(user_id, json.loads(creds.to_json()))
+        return creds
+    except Exception:
+        return None
+
+
+async def _save_user_credentials(user_id: str, creds: Credentials) -> None:
+    """Persist Google OAuth credentials to DB for a user."""
+    await db_save_google_token(user_id, json.loads(creds.to_json()))
 
 
 # ── Request models ──────────────────────────────────────────────────
@@ -131,17 +206,29 @@ class DiaryOutput(BaseModel):
 class SaveDiaryRequest(BaseModel):
     diary: DiaryOutput
     date: str
-    user_id: str | None = None
 
 
 class UpdateSpendingRequest(BaseModel):
     event_id: str
+
+    @field_validator("event_id")
+    @classmethod
+    def validate_event_id(cls, v: str) -> str:
+        UUID(v)
+        return v
+
     spending: float
 
 
 class ThumbRequest(BaseModel):
     diary_id: str
     event_id: str
+
+    @field_validator("diary_id", "event_id")
+    @classmethod
+    def validate_uuids(cls, v: str) -> str:
+        UUID(v)
+        return v
 
 
 class PhotoRecord(BaseModel):
@@ -154,6 +241,13 @@ class PhotoRecord(BaseModel):
 
 class SavePhotosRequest(BaseModel):
     diary_id: str
+
+    @field_validator("diary_id")
+    @classmethod
+    def validate_diary_id(cls, v: str) -> str:
+        UUID(v)
+        return v
+
     photos: list[PhotoRecord]
 
 
@@ -169,6 +263,13 @@ class CalendarEvent(BaseModel):
 
 class ManualEventRequest(BaseModel):
     diary_id: str
+
+    @field_validator("diary_id")
+    @classmethod
+    def validate_diary_id(cls, v: str) -> str:
+        UUID(v)
+        return v
+
     event: TimelineEvent
 
 
@@ -187,11 +288,11 @@ class UserProfile(BaseModel):
     photo_url: str | None = None
 
 
-# ── Endpoints ───────────────────────────────────────────────────────
+# ── Public Endpoints (no auth) ─────────────────────────────────────
 
 @app.get("/api/test-db")
 async def test_db():
-    """Quick smoke-test: insert a row, read it back, delete it."""
+    """Quick smoke-test: verify Supabase connectivity."""
     try:
         result = await test_connection()
         return result
@@ -199,56 +300,110 @@ async def test_db():
         return {"ok": False, "error": str(e)}
 
 
+# ── Google OAuth (public — auth flow itself) ────────────────────────
+
+@app.get("/api/auth/google")
+async def google_auth_start(user_id: str = Query(...)):
+    """Start Google OAuth flow — redirects user to Google consent screen.
+    Passes user_id through OAuth state so we can associate the token on callback.
+    """
+    flow = _get_google_flow()
+    auth_url, state = flow.authorization_url(
+        access_type="offline",
+        prompt="consent",
+        state=user_id,
+    )
+    return RedirectResponse(url=auth_url)
+
+
+@app.get("/api/auth/google/callback")
+async def google_auth_callback(code: str = Query(...), state: str = Query(default="")):
+    """Handle Google OAuth callback — exchange code for token, save to DB, redirect."""
+    flow = _get_google_flow()
+    flow.fetch_token(code=code)
+    creds = flow.credentials
+
+    # state contains the user_id passed from the auth start
+    user_id = state
+    if user_id:
+        await _save_user_credentials(user_id, creds)
+
+    return RedirectResponse(url=f"{FRONTEND_URL}/input?calendar=connected")
+
+
+@app.get("/api/auth/google/status")
+async def google_auth_status(user_id: str = Query(...)):
+    """Check if Google Calendar is authenticated for a user."""
+    creds = await _load_user_credentials(user_id)
+    if creds and creds.valid:
+        return {"connected": True}
+    return {"connected": False}
+
+
+# ── Authenticated Endpoints ─────────────────────────────────────────
+
 @app.put("/api/timeline/spending")
-async def update_timeline_spending(body: UpdateSpendingRequest):
+async def update_timeline_spending(
+    body: UpdateSpendingRequest,
+    user_id: str = Depends(get_current_user),
+):
     """Update the spending amount for a timeline event."""
     row = await update_spending(body.event_id, body.spending)
     return row
 
 
 @app.get("/api/timeline")
-async def get_timeline(diary_id: str = Query(...)):
+async def get_timeline(
+    diary_id: str = Query(...),
+    user_id: str = Depends(get_current_user),
+):
     """Get active (non-deleted) timeline events for a diary, sorted by time."""
+    _validate_uuid(diary_id, "diary_id")
     events = await get_active_timeline(diary_id)
     return {"timeline": events}
 
 
 @app.post("/api/timeline/add")
-async def add_timeline_event(body: ManualEventRequest):
+async def add_timeline_event(
+    body: ManualEventRequest,
+    user_id: str = Depends(get_current_user),
+):
     """Add a manual timeline event to a diary. Auto-generates emoji via LLM if missing."""
     event_data = body.event.model_dump()
 
     # Generate emoji if missing or generic default
-    if not event_data.get("emoji") or event_data["emoji"] in ("📌", "📅", "📝"):
+    if not event_data.get("emoji") or event_data["emoji"] in ("\U0001f4cc", "\U0001f4c5", "\U0001f4dd"):
         try:
             emojis = await _assign_emojis([event_data])
             event_data["emoji"] = emojis[0]
         except Exception:
-            event_data["emoji"] = "📌"
+            event_data["emoji"] = "\U0001f4cc"
 
-    try:
-        row = await add_manual_event(body.diary_id, event_data)
-        return {"event": row}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    row = await add_manual_event(body.diary_id, event_data)
+    return {"event": row}
 
 
 @app.delete("/api/timeline/{event_id}")
-async def delete_timeline_event(event_id: str):
+async def delete_timeline_event(
+    event_id: str,
+    user_id: str = Depends(get_current_user),
+):
     """Soft-delete a timeline event (set is_deleted=true)."""
+    _validate_uuid(event_id, "event_id")
     result = await soft_delete_event(event_id)
     return result
 
 
 @app.post("/api/diary/save")
-async def save_diary(body: SaveDiaryRequest):
+async def save_diary(
+    body: SaveDiaryRequest,
+    user_id: str = Depends(get_current_user),
+):
     """Save a complete diary + timeline events to Supabase."""
     diary_fields = body.diary.model_dump(exclude={"timeline"})
-    # Round spending to int for Supabase integer columns
     if "total_spending" in diary_fields:
         diary_fields["total_spending"] = round(diary_fields["total_spending"])
-    if body.user_id:
-        diary_fields["user_id"] = body.user_id
+    diary_fields["user_id"] = user_id
     diary_row = await db_save_diary(body.date, diary_fields)
 
     events = []
@@ -263,7 +418,10 @@ async def save_diary(body: SaveDiaryRequest):
 
 
 @app.post("/api/diary/thumb")
-async def thumb(body: ThumbRequest):
+async def thumb(
+    body: ThumbRequest,
+    user_id: str = Depends(get_current_user),
+):
     """Save which timeline event was the user's favorite."""
     row = await db_save_thumb(body.diary_id, body.event_id)
     return row
@@ -272,22 +430,29 @@ async def thumb(body: ThumbRequest):
 @app.get("/api/diary/history")
 async def diary_history(
     limit: int = Query(default=30, ge=1, le=100),
-    user_id: str = Query(default=""),
+    user_id: str = Depends(get_current_user),
 ):
     """Return past diaries ordered by date desc, with timeline events."""
-    return await db_get_diary_history(limit, user_id=user_id or None)
+    return await db_get_diary_history(limit, user_id=user_id)
 
 
 @app.get("/api/diary/draft")
-async def get_or_create_draft(date: str = Query(...), user_id: str = Query(default="")):
+async def get_or_create_draft(
+    date: str = Query(...),
+    user_id: str = Depends(get_current_user),
+):
     """Get or create a draft diary for a given date. Returns diary_id."""
-    diary = await get_or_create_diary(date, user_id=user_id or None)
+    diary = await get_or_create_diary(date, user_id=user_id)
     return diary
 
 
 @app.get("/api/diary/{diary_id}")
-async def get_diary_detail(diary_id: str):
+async def get_diary_detail(
+    diary_id: str,
+    user_id: str = Depends(get_current_user),
+):
     """Get a single diary with full timeline events and photos."""
+    _validate_uuid(diary_id, "diary_id")
     diary = await db_get_diary_by_id(diary_id)
     if not diary:
         raise HTTPException(status_code=404, detail="Diary not found")
@@ -295,8 +460,12 @@ async def get_diary_detail(diary_id: str):
 
 
 @app.delete("/api/diary/{diary_id}")
-async def delete_diary(diary_id: str):
+async def delete_diary(
+    diary_id: str,
+    user_id: str = Depends(get_current_user),
+):
     """Delete a diary entry and all related data (cascade)."""
+    _validate_uuid(diary_id, "diary_id")
     await db_delete_diary(diary_id)
     return {"ok": True}
 
@@ -304,7 +473,10 @@ async def delete_diary(diary_id: str):
 # ── Photos ───────────────────────────────────────────────────────────
 
 @app.post("/api/photos/save")
-async def save_photos_endpoint(body: SavePhotosRequest):
+async def save_photos_endpoint(
+    body: SavePhotosRequest,
+    user_id: str = Depends(get_current_user),
+):
     """Save photo records linked to a diary entry."""
     photo_dicts = [p.model_dump() for p in body.photos]
     rows = await db_save_photos(body.diary_id, photo_dicts)
@@ -312,8 +484,12 @@ async def save_photos_endpoint(body: SavePhotosRequest):
 
 
 @app.get("/api/photos/{diary_id}")
-async def get_photos_endpoint(diary_id: str):
+async def get_photos_endpoint(
+    diary_id: str,
+    user_id: str = Depends(get_current_user),
+):
     """Get all photos for a diary entry."""
+    _validate_uuid(diary_id, "diary_id")
     photos = await db_get_photos(diary_id)
     return {"photos": photos}
 
@@ -321,7 +497,10 @@ async def get_photos_endpoint(diary_id: str):
 # ── Calendar Events ──────────────────────────────────────────────────
 
 @app.post("/api/calendar/events")
-async def save_calendar(body: SaveCalendarRequest):
+async def save_calendar(
+    body: SaveCalendarRequest,
+    user_id: str = Depends(get_current_user),
+):
     """Import Google Calendar events for a date (upserts by calendar_id).
     Also bridges events into timeline_events for unified timeline.
     """
@@ -340,7 +519,7 @@ async def save_calendar(body: SaveCalendarRequest):
     rows = await db_save_calendar_events(body.date, event_dicts, body.diary_id)
 
     # Bridge to timeline_events if diary exists
-    diary = await get_or_create_diary(body.date)
+    diary = await get_or_create_diary(body.date, user_id=user_id)
     timeline_result = await save_calendar_as_timeline(diary["id"], event_dicts)
 
     return {
@@ -351,65 +530,30 @@ async def save_calendar(body: SaveCalendarRequest):
     }
 
 
-@app.get("/api/auth/google")
-async def google_auth_start():
-    """Start Google OAuth flow — redirects user to Google consent screen."""
-    flow = _get_google_flow()
-    auth_url, _ = flow.authorization_url(
-        access_type="offline",
-        prompt="consent",
-    )
-    return RedirectResponse(url=auth_url)
-
-
-@app.get("/api/auth/google/callback")
-async def google_auth_callback(code: str = Query(...)):
-    """Handle Google OAuth callback — exchange code for token, redirect to frontend."""
-    global _google_credentials
-    flow = _get_google_flow()
-    flow.fetch_token(code=code)
-    _google_credentials = flow.credentials
-    _save_credentials(_google_credentials)
-    return RedirectResponse(url=f"{FRONTEND_URL}/input?calendar=connected")
-
-
-@app.get("/api/auth/google/status")
-async def google_auth_status():
-    """Check if Google Calendar is authenticated."""
-    if _google_credentials and _google_credentials.valid:
-        return {"connected": True}
-    if _google_credentials and _google_credentials.expired and _google_credentials.refresh_token:
-        from google.auth.transport.requests import Request
-        _google_credentials.refresh(Request())
-        return {"connected": True}
-    return {"connected": False}
-
-
-DEFAULT_CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", "primary")
-
-
 @app.get("/api/calendar/fetch")
 async def fetch_calendar(
     date: str = Query(..., description="Date in YYYY-MM-DD format"),
-    calendar_id: str = Query(default="", description="Google Calendar ID (defaults to env)"),
-    tz: str = Query(default="America/New_York", description="Timezone (e.g. America/New_York, Asia/Seoul)"),
+    calendar_id: str = Query(default="", description="Google Calendar ID"),
+    tz: str = Query(default="America/New_York", description="Timezone"),
+    user_id: str = Depends(get_current_user),
 ):
     """Fetch Google Calendar events for a date via Google Calendar API,
     save to DB, and return them with emojis."""
-    global _google_credentials
+    creds = await _load_user_credentials(user_id)
 
-    if not _google_credentials:
+    if not creds:
         raise HTTPException(status_code=401, detail="Google Calendar not connected. Visit /api/auth/google first.")
 
     # Refresh token if expired
-    if _google_credentials.expired and _google_credentials.refresh_token:
-        from google.auth.transport.requests import Request
-        _google_credentials.refresh(Request())
+    if creds.expired and creds.refresh_token:
+        from google.auth.transport.requests import Request as GoogleRequest
+        creds.refresh(GoogleRequest())
+        await _save_user_credentials(user_id, creds)
 
     cal_id = calendar_id or DEFAULT_CALENDAR_ID
 
     # Fetch events from Google Calendar API
-    service = google_build("calendar", "v3", credentials=_google_credentials)
+    service = google_build("calendar", "v3", credentials=creds)
 
     try:
         from datetime import date as date_cls, datetime, timedelta
@@ -435,7 +579,7 @@ async def fetch_calendar(
     if not google_events:
         return {"date": date, "events": [], "diary_id": None, "saved": 0}
 
-    # Convert Google events to our CalendarEvent format, filter to requested date only
+    # Convert Google events to our CalendarEvent format
     event_dicts = []
     for ge in google_events:
         start = ge.get("start", {})
@@ -444,9 +588,7 @@ async def fetch_calendar(
         end_time = end.get("dateTime", end.get("date", ""))
         all_day = "date" in start and "dateTime" not in start
 
-        # Skip events that don't start on the requested date
-        # (multi-day events that merely overlap are excluded)
-        event_date = start_time[:10]  # "YYYY-MM-DD"
+        event_date = start_time[:10]
         if event_date != date:
             continue
 
@@ -463,25 +605,25 @@ async def fetch_calendar(
     # Generate emojis via LLM
     emojis = await _assign_emojis(event_dicts)
     for i, e in enumerate(event_dicts):
-        e["emoji"] = emojis[i] if i < len(emojis) else "📅"
+        e["emoji"] = emojis[i] if i < len(emojis) else "\U0001f4c5"
 
     # Save to DB
-    diary = await get_or_create_diary(date)
+    diary = await get_or_create_diary(date, user_id=user_id)
     rows = await db_save_calendar_events(date, event_dicts, diary["id"])
 
     # Bridge to timeline_events
     timeline_result = await save_calendar_as_timeline(diary["id"], event_dicts)
 
     # Return frontend-friendly format
+    from db import _extract_hhmm
+
     frontend_events = []
     for e in event_dicts:
-        start_str = e.get("start_time", "")
-        time_str = start_str[11:16] if len(start_str) > 16 else start_str[:5] if len(start_str) >= 5 else "12:00"
         frontend_events.append({
-            "time": time_str,
+            "time": _extract_hhmm(e.get("start_time", "")),
             "title": e.get("title", ""),
             "location": e.get("location", ""),
-            "emoji": e.get("emoji", "📅"),
+            "emoji": e.get("emoji", "\U0001f4c5"),
             "description": e.get("description", ""),
             "calendar_id": e.get("calendar_id", ""),
         })
@@ -496,14 +638,20 @@ async def fetch_calendar(
 
 
 @app.get("/api/calendar/events")
-async def get_calendar(date: str = Query(...)):
+async def get_calendar(
+    date: str = Query(...),
+    user_id: str = Depends(get_current_user),
+):
     """Get all calendar events for a date."""
     events = await db_get_calendar_events(date)
     return {"date": date, "events": events}
 
 
 @app.delete("/api/calendar/events")
-async def delete_calendar(date: str = Query(...)):
+async def delete_calendar(
+    date: str = Query(...),
+    user_id: str = Depends(get_current_user),
+):
     """Delete all calendar events for a date (re-import)."""
     await db_delete_calendar_events(date)
     return {"ok": True}
@@ -546,13 +694,79 @@ async def _assign_emojis(events: list[dict]) -> list[str]:
     except Exception:
         pass
 
-    # Fallback: default emoji for all
-    return ["📅"] * len(titles)
+    return ["\U0001f4c5"] * len(titles)
+
+
+# ── EXIF extraction ──────────────────────────────────────────────────
+
+def _extract_exif(raw: bytes) -> dict:
+    """Extract time and GPS from EXIF data. Returns dict with 'time' and/or 'gps'."""
+    result: dict = {}
+    try:
+        from PIL import Image
+        from PIL.ExifTags import TAGS, GPSTAGS
+
+        img = Image.open(io.BytesIO(raw))
+        exif_data = img._getexif()
+        if not exif_data:
+            return result
+
+        # Extract DateTimeOriginal or DateTimeDigitized
+        for tag_id, value in exif_data.items():
+            tag = TAGS.get(tag_id, tag_id)
+            if tag == "DateTimeOriginal" or tag == "DateTimeDigitized":
+                # Format: "2025:01:15 14:30:00"
+                if isinstance(value, str) and len(value) >= 16:
+                    time_part = value.split(" ")[1] if " " in value else None
+                    if time_part:
+                        result["time"] = time_part[:5]  # "14:30"
+                        result["datetime_original"] = value
+                break  # DateTimeOriginal is preferred, stop after first match
+
+        # Extract GPS coordinates
+        gps_info = exif_data.get(34853)  # GPSInfo tag
+        if gps_info:
+            def _to_degrees(ref, values):
+                d = float(values[0])
+                m = float(values[1])
+                s = float(values[2])
+                dd = d + m / 60 + s / 3600
+                if ref in ("S", "W"):
+                    dd = -dd
+                return round(dd, 6)
+
+            try:
+                lat_ref = gps_info.get(1, "N")
+                lat = gps_info.get(2)
+                lon_ref = gps_info.get(3, "E")
+                lon = gps_info.get(4)
+                if lat and lon:
+                    result["gps"] = {
+                        "lat": _to_degrees(lat_ref, lat),
+                        "lon": _to_degrees(lon_ref, lon),
+                    }
+            except (TypeError, IndexError, ZeroDivisionError):
+                pass
+
+    except Exception as e:
+        logger.debug("EXIF extraction failed for image: %s", e)
+
+    return result
 
 
 # ── Photo analysis (Dedalus Vision) ─────────────────────────────────
 
 PHOTO_ANALYSIS_PROMPT = """\
+Analyze this photo from someone's day and return a JSON object with these fields:
+- "title": short 3-6 word description of the activity (e.g. "Latte art photo", "Lunch at noodle bar")
+- "emoji": single emoji that best represents this moment
+- "description": 1-2 sentence description of what's in the photo
+
+Return ONLY the JSON object, no markdown or extra text. Example:
+{"title": "Morning coffee ritual", "emoji": "☕", "description": "A latte with beautiful art at a cozy cafe."}
+"""
+
+PHOTO_ANALYSIS_PROMPT_NO_EXIF = """\
 Analyze this photo from someone's day and return a JSON object with these fields:
 - "time": estimated time of day in HH:MM format (24h). Guess from lighting/context.
 - "title": short 3-6 word description of the activity (e.g. "Latte art photo", "Lunch at noodle bar")
@@ -565,14 +779,21 @@ Return ONLY the JSON object, no markdown or extra text. Example:
 
 
 async def _analyze_one(raw: bytes, mime: str, filename: str) -> dict:
-    """Send a single image to Dedalus for vision analysis and return structured data."""
+    """Extract EXIF metadata, then send image to Dedalus for vision analysis."""
+    exif = _extract_exif(raw)
+    exif_time = exif.get("time")  # e.g. "14:30" or None
+    exif_gps = exif.get("gps")   # e.g. {"lat": 40.44, "lon": -79.99} or None
+
+    # Use shorter prompt if EXIF already provides time
+    prompt = PHOTO_ANALYSIS_PROMPT if exif_time else PHOTO_ANALYSIS_PROMPT_NO_EXIF
+
     b64 = base64.b64encode(raw).decode()
 
     result = await runner.run(
         model="anthropic/claude-sonnet-4-5-20250929",
         input=[
             {"role": "user", "content": [
-                {"type": "text", "text": PHOTO_ANALYSIS_PROMPT},
+                {"type": "text", "text": prompt},
                 {"type": "image_url", "image_url": {
                     "url": f"data:{mime};base64,{b64}",
                 }},
@@ -581,9 +802,7 @@ async def _analyze_one(raw: bytes, mime: str, filename: str) -> dict:
         max_steps=1,
     )
 
-    # Parse structured JSON from AI response
     text = result.final_output or ""
-    # Strip markdown code fences if present
     text = text.strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
@@ -594,34 +813,37 @@ async def _analyze_one(raw: bytes, mime: str, filename: str) -> dict:
         parsed = {
             "time": "12:00",
             "title": filename or "Photo",
-            "emoji": "📸",
+            "emoji": "\U0001f4f8",
             "description": text,
         }
 
-    return {
-        "time": parsed.get("time", "12:00"),
+    # EXIF time takes priority over AI-estimated time
+    final_time = exif_time or parsed.get("time", "12:00")
+
+    event: dict = {
+        "time": final_time,
         "title": parsed.get("title", "Photo"),
-        "emoji": parsed.get("emoji", "📸"),
+        "emoji": parsed.get("emoji", "\U0001f4f8"),
         "description": parsed.get("description", ""),
         "source": "photo",
+        "time_source": "exif" if exif_time else "ai",
     }
+
+    if exif_gps:
+        event["gps"] = exif_gps
+
+    return event
 
 
 @app.post("/api/photos/upload")
 async def upload_and_analyze_photos(
     files: list[UploadFile] = File(...),
     date: str = Query(default=""),
+    user_id: str = Depends(get_current_user),
 ):
-    """Upload photos to Supabase Storage + analyze with AI.
-    If date is provided, also saves to photos table + timeline_events.
-
-    Returns:
-        - photos: list of { url, filename }
-        - events: list of { time, title, emoji, source } (structured PhotoEvent)
-        - diary_id: if date was provided
-    """
+    """Upload photos to Supabase Storage + analyze with AI."""
     if len(files) > 10:
-        return {"error": "Maximum 10 images allowed"}
+        raise HTTPException(status_code=400, detail="Maximum 10 images allowed")
 
     photo_urls = []
     analysis_tasks = []
@@ -631,17 +853,14 @@ async def upload_and_analyze_photos(
         mime = f.content_type or "image/jpeg"
         fname = f.filename or "photo.jpg"
 
-        # Upload to Supabase Storage
         try:
             url = await upload_photo_to_storage(raw, fname, mime)
             photo_urls.append({"url": url, "filename": fname})
         except Exception as e:
             photo_urls.append({"url": None, "filename": fname, "error": str(e)})
 
-        # Queue analysis
         analysis_tasks.append(_analyze_one(raw, mime, fname))
 
-    # Run all analyses in parallel
     analyses = await asyncio.gather(*analysis_tasks, return_exceptions=True)
 
     events = []
@@ -650,20 +869,18 @@ async def upload_and_analyze_photos(
             events.append({
                 "time": "12:00",
                 "title": files[i].filename or "Photo",
-                "emoji": "📸",
+                "emoji": "\U0001f4f8",
                 "description": str(a),
                 "source": "photo",
             })
         else:
-            # Attach photo URL to the event
             if i < len(photo_urls) and photo_urls[i].get("url"):
                 a["photo_url"] = photo_urls[i]["url"]
             events.append(a)
 
-    # If date provided, save to DB (photos + timeline_events)
     diary_id = None
     if date:
-        diary = await get_or_create_diary(date)
+        diary = await get_or_create_diary(date, user_id=user_id)
         diary_id = diary["id"]
         for i, ev in enumerate(events):
             url = photo_urls[i].get("url") if i < len(photo_urls) else None
@@ -673,21 +890,24 @@ async def upload_and_analyze_photos(
                         "photo_url": url,
                         "ai_analysis": ev.get("description", ""),
                         "time": ev.get("time", "12:00"),
-                        "emoji": ev.get("emoji", "📸"),
+                        "emoji": ev.get("emoji", "\U0001f4f8"),
                         "title": ev.get("title", "Photo"),
                         "description": ev.get("description", ""),
                     })
                 except Exception:
-                    pass  # photo already saved to storage, timeline insert is best-effort
+                    pass
 
     return {"photos": photo_urls, "events": events, "diary_id": diary_id}
 
 
 @app.post("/api/photos/analyze")
-async def analyze_photos(files: list[UploadFile] = File(...)):
-    """Analyze photos with AI only (no storage upload). Returns structured PhotoEvent data."""
+async def analyze_photos(
+    files: list[UploadFile] = File(...),
+    user_id: str = Depends(get_current_user),
+):
+    """Analyze photos with AI only (no storage upload)."""
     if len(files) > 5:
-        return {"error": "Maximum 5 images allowed"}
+        raise HTTPException(status_code=400, detail="Maximum 5 images allowed")
 
     analysis_tasks = []
     for f in files:
@@ -704,7 +924,7 @@ async def analyze_photos(files: list[UploadFile] = File(...)):
             events.append({
                 "time": "12:00",
                 "title": files[i].filename or "Photo",
-                "emoji": "📸",
+                "emoji": "\U0001f4f8",
                 "description": str(a),
                 "source": "photo",
             })
@@ -717,8 +937,8 @@ async def analyze_photos(files: list[UploadFile] = File(...)):
 # ── User Profile ─────────────────────────────────────────────────────
 
 @app.get("/api/user")
-async def get_user_profile(user_id: str = Query(...)):
-    """Get user profile by auth user_id (UUID)."""
+async def get_user_profile(user_id: str = Depends(get_current_user)):
+    """Get user profile for the authenticated user."""
     user = await db_get_user(user_id)
     if not user:
         return {
@@ -734,8 +954,11 @@ async def get_user_profile(user_id: str = Query(...)):
 
 
 @app.post("/api/user")
-async def update_user_profile(profile: UserProfile, user_id: str = Query(...)):
-    """Create or update user profile by auth user_id."""
+async def update_user_profile(
+    profile: UserProfile,
+    user_id: str = Depends(get_current_user),
+):
+    """Create or update user profile for the authenticated user."""
     user_data = profile.model_dump(exclude_none=False)
     result = await db_create_or_update_user(user_id, user_data)
     return result
