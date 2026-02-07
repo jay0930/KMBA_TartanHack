@@ -220,11 +220,17 @@ async def add_timeline_event(body: ManualEventRequest):
 
     # Generate emoji if missing or generic default
     if not event_data.get("emoji") or event_data["emoji"] in ("📌", "📅", "📝"):
-        emojis = await _assign_emojis([event_data])
-        event_data["emoji"] = emojis[0]
+        try:
+            emojis = await _assign_emojis([event_data])
+            event_data["emoji"] = emojis[0]
+        except Exception:
+            event_data["emoji"] = "📌"
 
-    row = await add_manual_event(body.diary_id, event_data)
-    return {"event": row}
+    try:
+        row = await add_manual_event(body.diary_id, event_data)
+        return {"event": row}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.delete("/api/timeline/{event_id}")
