@@ -116,11 +116,24 @@ async def delete_diary(diary_id: str) -> bool:
     return True
 
 
+TIMELINE_FIELDS = {"time", "emoji", "title", "description", "location", "source", "source_id",
+                    "spending", "is_deleted", "photo_url", "photo_analysis", "sort_order"}
+
+
+def _clean_timeline_row(diary_id: str, event: dict) -> dict:
+    """Build a timeline_events row with only known DB columns, dropping Nones."""
+    row = {"diary_id": diary_id}
+    for k, v in event.items():
+        if k in TIMELINE_FIELDS and v is not None:
+            row[k] = v
+    return row
+
+
 # ── Timeline Events ─────────────────────────────────────────────────
 
 async def save_timeline_events(diary_id: str, events: list[dict]) -> list:
     """Bulk-insert timeline events linked to a diary entry."""
-    rows = [{"diary_id": diary_id, **event} for event in events]
+    rows = [_clean_timeline_row(diary_id, e) for e in events]
     result = supabase.table("timeline_events").insert(rows).execute()
     return result.data
 
@@ -140,19 +153,8 @@ async def get_active_timeline(diary_id: str) -> list:
 
 async def add_manual_event(diary_id: str, event: dict) -> dict:
     """Insert a single manual timeline event."""
-    row = {
-        "diary_id": diary_id,
-        "time": event.get("time", "12:00"),
-        "emoji": event.get("emoji"),
-        "title": event.get("title", ""),
-        "description": event.get("description"),
-        "location": event.get("location"),
-        "source": "manual",
-        "spending": event.get("spending", 0),
-        "is_deleted": False,
-    }
-    # Remove None values to avoid inserting into non-existent columns
-    row = {k: v for k, v in row.items() if v is not None}
+    row = _clean_timeline_row(diary_id, {**event, "source": "manual", "is_deleted": False})
+    row.setdefault("spending", 0)
     result = supabase.table("timeline_events").insert(row).execute()
     return result.data[0]
 
