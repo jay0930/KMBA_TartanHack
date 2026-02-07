@@ -93,6 +93,7 @@ const MOCK_DIARIES = [
 interface MockDiary {
   id: string;
   date: string;
+  rawDate?: string;
   emojis: string[];
   times: string[];
   preview: string;
@@ -104,6 +105,21 @@ interface MockDiary {
   diaryText?: string;
   spendingInsight?: string;
   tomorrowSuggestion?: string;
+}
+
+const WEEK_COLORS = ['#0046FF', '#73C8D2', '#FF9013', '#0046FF', '#73C8D2', '#FF9013', '#0046FF'];
+
+function getWeekDates(): string[] {
+  const today = new Date();
+  const day = today.getDay(); // 0=Sun, 1=Mon
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() + mondayOffset);
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    return d.toISOString().split('T')[0];
+  });
 }
 
 function TodayCard({ onClick }: { onClick: () => void }) {
@@ -205,6 +221,7 @@ export default function DayFlowFeed() {
   const [diaries, setDiaries] = useState<MockDiary[]>(MOCK_DIARIES);
   const [weeklyTotal, setWeeklyTotal] = useState(121.75);
   const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     fetch(`${BACKEND_URL}/api/diary/history?limit=30`)
@@ -232,6 +249,7 @@ export default function DayFlowFeed() {
             return {
               id: d.id,
               date: formatted,
+              rawDate: d.date,
               emojis: tlEmojis.length > 0 ? tlEmojis : [d.primary_emoji || '📝'],
               times: tlTimes,
               preview: d.diary_preview || d.diary_text?.slice(0, 100) || 'No preview available',
@@ -246,8 +264,12 @@ export default function DayFlowFeed() {
             };
           });
           setDiaries(mapped);
-          const total = mapped.reduce((s, d) => s + d.total, 0);
-          setWeeklyTotal(total);
+          // Compute weekly total (Mon-Sun of current week)
+          const weekDates = getWeekDates();
+          const weekTotal = mapped
+            .filter(d => d.rawDate && weekDates.includes(d.rawDate))
+            .reduce((s, d) => s + d.total, 0);
+          setWeeklyTotal(weekTotal);
         }
       })
       .catch(() => {
@@ -269,12 +291,6 @@ export default function DayFlowFeed() {
         >
           <div className="text-2xl font-bold text-[#1a1a1a] font-[family-name:var(--font-outfit)]">
             DayFlow
-          </div>
-          <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center cursor-pointer text-base"
-            style={{ background: 'rgba(0,0,0,0.05)' }}
-          >
-            ☀️
           </div>
         </div>
 
@@ -312,20 +328,30 @@ export default function DayFlowFeed() {
                 ${weeklyTotal.toFixed(2)}
               </div>
             </div>
-            <div className="flex gap-0.5">
-              {['#0046FF', '#73C8D2', '#FF9013', '#0046FF', '#73C8D2', '#FF9013', '#0046FF'].map(
-                (c, i) => (
-                  <div
-                    key={i}
-                    className="rounded opacity-70"
-                    style={{
-                      width: 8,
-                      height: 12 + ((i * 7 + 3) % 24),
-                      background: c,
-                    }}
-                  />
-                )
-              )}
+            <div className="flex gap-0.5 items-end" style={{ height: 36 }}>
+              {(() => {
+                const weekDates = getWeekDates();
+                const dailySpending = weekDates.map(date => {
+                  const diary = diaries.find(d => d.rawDate === date);
+                  return diary ? diary.total : 0;
+                });
+                const maxSpending = Math.max(...dailySpending, 1);
+                return weekDates.map((_, i) => {
+                  if (dailySpending[i] === 0) return null;
+                  const barHeight = Math.max(6, (dailySpending[i] / maxSpending) * 36);
+                  return (
+                    <div
+                      key={i}
+                      className="rounded opacity-70"
+                      style={{
+                        width: 8,
+                        height: barHeight,
+                        background: WEEK_COLORS[i],
+                      }}
+                    />
+                  );
+                });
+              })()}
             </div>
           </div>
         </div>
@@ -396,21 +422,7 @@ export default function DayFlowFeed() {
 
             {/* Delete */}
             <button
-              onClick={async () => {
-                if (deleting) return;
-                if (!confirm('Are you sure you want to delete this diary?')) return;
-                setDeleting(true);
-                try {
-                  await fetch(`${BACKEND_URL}/api/diary/${selectedDiary.id}`, { method: 'DELETE' });
-                  setDiaries(prev => prev.filter(d => d.id !== selectedDiary.id));
-                  setWeeklyTotal(prev => prev - selectedDiary.total);
-                  setSelectedDiary(null);
-                } catch (err) {
-                  console.error('Failed to delete diary:', err);
-                } finally {
-                  setDeleting(false);
-                }
-              }}
+              onClick={() => setConfirmDelete(true)}
               disabled={deleting}
               className="w-full mt-6 py-3 rounded-xl text-[13px] font-medium transition-colors"
               style={{
@@ -423,6 +435,62 @@ export default function DayFlowFeed() {
             >
               {deleting ? 'Deleting...' : 'Delete this diary'}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {confirmDelete && selectedDiary && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center"
+          onClick={() => setConfirmDelete(false)}
+        >
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-[6px]" />
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-[80%] max-w-[320px] bg-white rounded-2xl overflow-hidden"
+            style={{ animation: 'fade-in-up 0.2s ease-out' }}
+          >
+            <div className="p-6 pb-4 text-center">
+              <div className="text-[32px] mb-3">🗑️</div>
+              <div className="text-[15px] font-semibold text-[#1a1a1a] font-[family-name:var(--font-outfit)] mb-1.5">
+                Delete this diary?
+              </div>
+              <div className="text-[13px] text-gray-400 leading-snug">
+                This action cannot be undone. All timeline events and photos will be permanently removed.
+              </div>
+            </div>
+            <div className="flex border-t border-gray-100">
+              <button
+                onClick={() => setConfirmDelete(false)}
+                className="flex-1 py-3.5 text-[14px] font-medium transition-colors"
+                style={{ color: '#0046FF', borderRight: '1px solid #f3f4f6' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (deleting) return;
+                  setDeleting(true);
+                  try {
+                    await fetch(`${BACKEND_URL}/api/diary/${selectedDiary.id}`, { method: 'DELETE' });
+                    setDiaries(prev => prev.filter(d => d.id !== selectedDiary.id));
+                    setWeeklyTotal(prev => prev - selectedDiary.total);
+                    setConfirmDelete(false);
+                    setSelectedDiary(null);
+                  } catch (err) {
+                    console.error('Failed to delete diary:', err);
+                  } finally {
+                    setDeleting(false);
+                  }
+                }}
+                disabled={deleting}
+                className="flex-1 py-3.5 text-[14px] font-medium transition-colors"
+                style={{ color: deleting ? '#ccc' : '#ef4444' }}
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
           </div>
         </div>
       )}
